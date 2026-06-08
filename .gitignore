@@ -1,0 +1,23 @@
+# Python / local runtime
+__pycache__/
+*.py[cod]
+.venv/
+.cache/
+
+# OS / editor noise
+.DS_Store
+.claude/
+
+# Generated reports, logs, charts, and datasets
+logs/
+*.log
+cron.log
+*.db
+*.sqlite
+*.sqlite3
+*.png
+*.csv
+*.json
+
+# Large external/debug artifacts
+main.js
