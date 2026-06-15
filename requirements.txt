@@ -1,4 +1,6 @@
 hyperliquid-python-sdk
+markdown
 matplotlib
 pandas
+plotly
 requests

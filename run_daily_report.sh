@@ -355,3 +355,8 @@ PY
 
 echo "Report generated: ${LOG_FILE}"
 echo "Chart saved: hyperliquid_6m_macro_trend.png"
+
+if ! python generate_dashboard.py "$TODAY" 2>&1; then
+  echo "Dashboard generation failed" >&2
+  exit 1
+fi
