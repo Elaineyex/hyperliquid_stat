@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import sqlite3
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
@@ -151,15 +152,63 @@ def build_hype_valuation(revenue_7d_avg, circulating_supply, total_supply, marke
     }
 
 
-def get_current_hype_valuation(revenue_7d_avg):
+def get_latest_cached_valuation_inputs(current_hype_price=None):
+    if not DB_PATH.exists():
+        raise ValueError(f"No local valuation cache found at {DB_PATH}")
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT date, hype_circulating_supply, hype_total_supply, hype_market_cap
+            FROM daily_metrics
+            WHERE hype_circulating_supply IS NOT NULL
+              AND hype_total_supply IS NOT NULL
+              AND hype_market_cap IS NOT NULL
+            ORDER BY date DESC
+            LIMIT 1
+        """)
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        raise ValueError("No cached valuation inputs found in daily_metrics")
+
+    cached_date, circulating_supply, total_supply, cached_market_cap = row
+    market_cap = float(cached_market_cap)
+    if current_hype_price is not None:
+        market_cap = float(current_hype_price) * float(circulating_supply)
+
+    return {
+        "date": cached_date,
+        "circulating_supply": float(circulating_supply),
+        "total_supply": float(total_supply),
+        "market_cap": market_cap,
+    }
+
+
+def get_current_hype_valuation(revenue_7d_avg, current_hype_price=None):
     print("Fetching current HYPE valuation metrics from CoinGecko...")
-    market_data = get_hype_market_data()
-    return build_hype_valuation(
-        revenue_7d_avg,
-        market_data["circulating_supply"],
-        get_hype_supply_denominator(market_data),
-        market_data["market_cap"]["usd"],
-    )
+    try:
+        market_data = get_hype_market_data()
+        return build_hype_valuation(
+            revenue_7d_avg,
+            market_data["circulating_supply"],
+            get_hype_supply_denominator(market_data),
+            market_data["market_cap"]["usd"],
+        )
+    except Exception as e:
+        print(f"CoinGecko current valuation fetch failed, using cached supply fallback: {e}")
+        cached = get_latest_cached_valuation_inputs(current_hype_price)
+        valuation = build_hype_valuation(
+            revenue_7d_avg,
+            cached["circulating_supply"],
+            cached["total_supply"],
+            cached["market_cap"],
+        )
+        valuation["date"] = f"{target_date.strftime('%Y-%m-%d')} (supply cached from {cached['date']})"
+        return valuation
 
 
 def get_historical_hype_valuation(revenue_7d_avg, valuation_date):
@@ -191,10 +240,10 @@ def get_historical_hype_valuation(revenue_7d_avg, valuation_date):
     return build_hype_valuation(revenue_7d_avg, market_cap / price, total_supply, market_cap)
 
 
-def get_hype_valuation(revenue_7d_avg, valuation_date):
+def get_hype_valuation(revenue_7d_avg, valuation_date, current_hype_price=None):
     today_utc = datetime.now(timezone.utc).date()
     if valuation_date.date() >= today_utc:
-        valuation = get_current_hype_valuation(revenue_7d_avg)
+        valuation = get_current_hype_valuation(revenue_7d_avg, current_hype_price)
     else:
         valuation = get_historical_hype_valuation(revenue_7d_avg, valuation_date)
     if "date" not in valuation:
@@ -301,6 +350,10 @@ def get_protocol_revenue_history():
         
         if 'totalDataChart' in data_hl:
             chart_hl = {pd.to_datetime(item[0], unit='s', utc=True): float(item[1]) for item in data_hl['totalDataChart']}
+            breakdown_hl = {}
+            for item in data_hl.get('totalDataChartBreakdown', []):
+                dt = pd.to_datetime(item[0], unit='s', utc=True)
+                breakdown_hl[dt] = sum(float(value) for value in item[1].values())
             
             # Spectra data
             spectra_chart = {}
@@ -309,6 +362,13 @@ def get_protocol_revenue_history():
             
             processed = []
             for dt, rev in chart_hl.items():
+                breakdown_rev = breakdown_hl.get(dt)
+                if breakdown_rev is not None and breakdown_rev > rev * 1.25:
+                    print(
+                        f"  DefiLlama aggregate revenue for {dt.strftime('%Y-%m-%d')} "
+                        f"looks incomplete (${rev:,.0f}); using source breakdown sum ${breakdown_rev:,.0f}."
+                    )
+                    rev = breakdown_rev
                 spectra_rev = spectra_chart.get(dt, 0)
                 # Subtract Spectra revenue if present
                 net_rev = max(0, rev - spectra_rev)
@@ -321,7 +381,8 @@ def get_protocol_revenue_history():
             df = pd.DataFrame(processed).set_index('date').sort_index()
             hip4_df = get_hip4_prediction_market_revenue_history()
             if hip4_df is None:
-                return None
+                print("  Skipping HIP-4 prediction market revenue due to fetch failure.")
+                hip4_df = pd.DataFrame(columns=["hip4_prediction_volume", "hip4_prediction_revenue"])
 
             if not hip4_df.empty:
                 df = pd.merge(df, hip4_df, left_index=True, right_index=True, how='outer')
@@ -501,7 +562,7 @@ if __name__ == "__main__":
         rev_30d_avg = revenue_metrics["rev_30d_avg"]
         rev_7d_vs_30d = revenue_metrics["rev_7d_vs_30d"]
         try:
-            hype_valuation = get_hype_valuation(rev_7d_avg, target_date)
+            hype_valuation = get_hype_valuation(rev_7d_avg, target_date, hype_now)
         except Exception as e:
             print(f"Failed to fetch HYPE valuation metrics from CoinGecko: {e}")
             sys.exit(1)
