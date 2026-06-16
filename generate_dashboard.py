@@ -398,7 +398,7 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
       <span>Source <strong>{brief_path.name}</strong></span>
       <span>Series <strong>{row_count} daily rows</strong></span>
       <span>Generated <strong>{generated} CST</strong></span>
-      <span>Cadence <strong>09:30 Beijing</strong></span>
+      <span>Cadence <strong>12:00 Beijing</strong></span>
     </div>
   </header>
 
@@ -425,7 +425,7 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
   </section>
 
   <footer class="report-footer">
-    <span class="footer-note">Auto-refreshed daily at 09:30 Beijing time.</span>
+    <span class="footer-note">Auto-refreshed daily at 12:00 Beijing time.</span>
     <span class="footer-note">Data analysis only, not financial advice.</span>
   </footer>
 </div>
