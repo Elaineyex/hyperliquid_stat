@@ -416,6 +416,25 @@ def get_revenue_metrics(revenue_df, revenue_date):
     revenue_window = revenue_df[revenue_df.index <= revenue_day]
     latest_rev = revenue_window.loc[revenue_day, "revenue"]
     prev_rev = revenue_window.loc[prev_day, "revenue"]
+
+    # Guard against unsettled DefiLlama days: the source often reports a
+    # partial figure for the most recent day(s) before backfilling the true
+    # total ~24h later. Such a value is typically a fraction of normal volume.
+    # Compare against the trailing 7d average of the *prior* days (excluding
+    # the candidate day itself, so a bad value can't deflate its own baseline)
+    # and refuse to proceed if it looks incomplete, so it never lands in the
+    # dashboard as "today".
+    prior_days = revenue_window[revenue_window.index < revenue_day]["revenue"].tail(7)
+    if len(prior_days) >= 3:
+        prior_7d_avg = prior_days.mean()
+        if prior_7d_avg > 0 and latest_rev < 0.20 * prior_7d_avg:
+            raise ValueError(
+                f"Revenue for {revenue_day.strftime('%Y-%m-%d')} looks unsettled: "
+                f"${latest_rev:,.0f} is only {latest_rev / prior_7d_avg * 100:.0f}% "
+                f"of the prior 7d avg (${prior_7d_avg:,.0f}). DefiLlama has likely "
+                f"not backfilled this day yet; skipping until it settles."
+            )
+
     rev_7d_avg = revenue_window["revenue"].tail(7).mean()
     rev_30d_avg = revenue_window["revenue"].tail(30).mean()
     rev_7d_vs_30d = (rev_7d_avg / rev_30d_avg - 1) * 100
