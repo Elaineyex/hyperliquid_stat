@@ -196,7 +196,8 @@ def top_delta_rows(today_breakdown, prev_breakdown):
         today = today_breakdown.get(name, 0.0)
         prev = prev_breakdown.get(name, 0.0)
         rows.append((name, today, prev, today - prev))
-    return sorted(rows, key=lambda row: row[3], reverse=True)
+    # Sort by absolute magnitude so the biggest movers lead on both up and down days.
+    return sorted(rows, key=lambda row: abs(row[3]), reverse=True)
 
 
 def render_source_table(rows, total):
@@ -365,7 +366,7 @@ Source snapshot for the complete revenue day used by the {report_date.strftime('
 
 ## Live Perp Volume Context
 
-DefiLlama's `Hyperliquid Perps` revenue bucket is blended. Hyperliquid's API exposes current native and HIP-3 / builder-deployed perp notional volume, which helps explain where the perps revenue pressure is coming from. This is live 24h volume context, not an exact historical revenue split for {revenue_day}.
+DefiLlama's `Hyperliquid Perps` revenue bucket is blended across native and HIP-3 perps. The table below shows live 24h notional volume by venue — **not** a proxy for protocol revenue share. HIP-3 volume does not translate proportionally to Hyperliquid protocol revenue: empirically (ASXN, June 2026) HIP-3 generates ~7% of protocol perp revenue despite ~35% of notional volume, because Hyperliquid retains a much smaller fee per notional on HIP-3 trades than on native perps (the majority of the HIP-3 fee goes to the deployer). This is live 24h volume context, not an exact historical revenue split for {revenue_day}.
 
 {render_volume_table(volume_context)}
 
@@ -394,7 +395,7 @@ DefiLlama's `Hyperliquid Perps` revenue bucket is blended. Hyperliquid's API exp
 - Perps remain the dominant revenue contributor when `Hyperliquid Perps` is the largest DefiLlama source bucket.
 - Spot orderbook revenue is separately visible and should not be mixed into the perp fee model.
 - Ecosystem and staking rows are app-level or staking-related DefiLlama sources around Hyperliquid; they are useful for ecosystem activity, but they are not native perp trading fees.
-- HIP-3 perps should be tracked separately from native perps because builder-deployed venues can add deployer fee economics on top of the base HyperCore fee system.
+- HIP-3 perps generate significantly less protocol revenue per unit of notional than native perps. Empirically (ASXN, June 2026), HIP-3 produced ~7% of protocol perp revenue despite ~35% of notional volume. Most of the fee on HIP-3 trades goes to the deployer; Hyperliquid retains only a small base share. Do not use HIP-3 notional volume as a proxy for HIP-3 protocol revenue.
 
 ## Data Sources
 
