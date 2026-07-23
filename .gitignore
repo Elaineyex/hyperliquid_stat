@@ -23,3 +23,6 @@ dashboard.html
 
 # Large external/debug artifacts
 main.js
+
+# Git worktrees (scratch, isolated task workspaces)
+.worktrees/
