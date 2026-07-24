@@ -5,6 +5,7 @@ an interactive 6M macro-trend chart sourced from the local sqlite DB.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone, timedelta
@@ -21,9 +22,27 @@ OUTPUT_PATH = ROOT / "dashboard.html"
 
 MD_EXTENSIONS = ["tables", "sane_lists"]
 
+# --- Coinbase USDC reserve-income estimate (off-protocol, NOT in revenue_daily) ---
+# Manual estimate, not a live feed. See logs/2026-07-24-coinbase-usdc-reserve-income-research.md
+# for full sourcing/methodology and caveats before changing these numbers.
+USDC_ESTIMATE = {
+    "as_of": "2026-07-24",
+    "float_usd": 6.0e9,          # JPMorgan est. (2026-07-14, via CoinDesk), ~8% of USDC supply
+    "hl_share": 0.90,             # reported share of reserve income paid to Hyperliquid
+    "yield_low": 0.030,
+    "yield_base": 0.035,          # derived from Circle Q1'26 reserve income / avg circulating USDC
+    "yield_high": 0.040,
+}
+
 
 def latest_brief() -> Path:
-    candidates = sorted(LOGS_DIR.glob("20*-*-*.md"))
+    # Plain YYYY-MM-DD.md only — excludes suffixed research/analysis notes like
+    # YYYY-MM-DD-revenue-breakdown.md, which sort after same-day briefs and would
+    # otherwise get picked up as "latest" and fail date parsing downstream.
+    candidates = sorted(
+        p for p in LOGS_DIR.glob("20*-*-*.md")
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.stem)
+    )
     if not candidates:
         raise FileNotFoundError("No daily brief markdown found in logs/")
     return candidates[-1]
@@ -261,6 +280,67 @@ def render_brief(md_text: str) -> tuple[str, str]:
     return title, body_html
 
 
+def build_usdc_estimate_html() -> str:
+    """Render the Coinbase USDC reserve-income estimate card.
+
+    This is NOT on-chain protocol revenue and is NOT included in revenue_daily,
+    revenue_7d_avg, or hype_ps_ratio anywhere else in this dashboard/DB — it's
+    an off-chain interest-income split between Coinbase and Hyperliquid,
+    confirmed absent from ASXN's own rev-fee-breakdown taxonomy. Manual
+    estimate; no live data source exists for the underlying float or yield.
+    See logs/2026-07-24-coinbase-usdc-reserve-income-research.md.
+    """
+    e = USDC_ESTIMATE
+    rows = []
+    for label, y in (("Low", e["yield_low"]), ("Base", e["yield_base"]), ("High", e["yield_high"])):
+        annual = e["float_usd"] * y * e["hl_share"]
+        monthly = annual / 12
+        daily = annual / 365.25
+        rows.append((label, y, annual, monthly, daily))
+
+    def fmt_usd(v: float) -> str:
+        return f"${v / 1e6:,.1f}M" if v >= 1e6 else f"${v:,.0f}"
+
+    def fmt_usd_k(v: float) -> str:
+        return f"${v / 1e3:,.1f}K"
+
+    row_html = "\n".join(
+        f'''      <tr class="{'is-base' if label == 'Base' else ''}">
+        <td>{label}</td><td>{y:.1%}</td>
+        <td>{fmt_usd(annual)}</td><td>{fmt_usd(monthly)}</td><td>{fmt_usd_k(daily)}</td>
+      </tr>'''
+        for label, y, annual, monthly, daily in rows
+    )
+
+    return f"""
+    <div class="estimate-card">
+      <div class="estimate-flag">ESTIMATE &middot; off-protocol &middot; not in revenue_daily</div>
+      <p>JPMorgan (2026-07-14, via CoinDesk/Yahoo Finance/Benzinga) reported that Coinbase now
+      classifies USDC held on Hyperliquid as &quot;on-platform&quot;, collecting the reserve
+      income it generates and paying <strong>90%</strong> of that income back to Hyperliquid.
+      Estimated float: <strong>${e['float_usd']/1e9:.1f}B</strong> (&asymp;8% of USDC circulating
+      supply at the time). No live feed exists for this &mdash; this is a manual, clearly-bounded
+      estimate, not a tracked metric.</p>
+      <table class="estimate-table">
+        <thead><tr><th>Scenario</th><th>Yield</th><th>Annualized</th><th>Monthly</th><th>Daily</th></tr></thead>
+        <tbody>
+{row_html}
+        </tbody>
+      </table>
+      <p class="estimate-note">Yield assumption (3.0&ndash;4.0%, base 3.5%) is derived, not disclosed:
+      Circle's own Q1'26 reserve income ($653M) &divide; ~$76.15B average circulating USDC
+      &asymp; 3.4% annualized, used as a proxy for this float's yield &mdash; roughly consistent
+      with the Fed funds target range at the time (3.50&ndash;3.75%). Float and 90% share are
+      single-sourced to the JPMorgan note; no primary contract has been located for the
+      Coinbase&ndash;Hyperliquid arrangement (unlike Circle&ndash;Coinbase's SEC-filed
+      Collaboration Agreement, which confirms the analogous split there is a recurring monthly
+      payment, not a one-off &mdash; see the research log for details). Confirmed via ASXN's own
+      compiled JS that this income has no path into Hyperliquid's on-chain fee revenue at all.
+      As of {e['as_of']}.</p>
+    </div>
+"""
+
+
 CSS = """
 *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -362,6 +442,28 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body);
 .brief-card td strong { color: var(--ink); font-weight: 500;
   font-family: var(--font-body); }
 
+.estimate-card { background: #FFFFFF; border: 1px solid var(--amber);
+  border-radius: var(--radius-lg); padding: 22px 26px; }
+.estimate-flag { display: inline-block; font-family: var(--font-mono);
+  font-size: 10px; font-weight: 500; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--amber); background: var(--amber-bg);
+  border-radius: 4px; padding: 4px 9px; margin-bottom: 12px; }
+.estimate-card p { margin: 10px 0; line-height: 1.65; color: var(--ink-2);
+  font-size: 13px; }
+.estimate-card p:first-of-type { margin-top: 0; }
+.estimate-table { width: 100%; border-collapse: collapse; font-size: 12px;
+  margin: 14px 0; font-family: var(--font-mono); }
+.estimate-table th { font-size: 10px; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--ink-3); font-weight: 400;
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border-2);
+  background: var(--bg-2); }
+.estimate-table td { padding: 8px 10px; color: var(--ink-2);
+  border-bottom: 1px solid var(--border); }
+.estimate-table tbody tr:last-child td { border-bottom: none; }
+.estimate-table tr.is-base td { color: var(--ink); font-weight: 500;
+  background: var(--amber-bg); }
+.estimate-note { font-size: 11.5px !important; color: var(--ink-3) !important; }
+
 .report-footer { margin-top: 48px; padding-top: 18px;
   border-top: 1px solid var(--border); display: flex;
   justify-content: space-between; align-items: center; }
@@ -371,7 +473,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body);
 
 
 def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
-               row_count: int) -> str:
+               row_count: int, usdc_estimate_html: str) -> str:
     now_beijing = datetime.now(timezone(timedelta(hours=8)))
     generated = now_beijing.strftime("%Y-%m-%d %H:%M")
     safe_title = title or "Hyperliquid Dashboard"
@@ -424,6 +526,14 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
     </div>
   </section>
 
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">03</span>
+      <h2 class="section-title">Coinbase USDC Reserve-Income Estimate</h2>
+    </div>
+    {usdc_estimate_html}
+  </section>
+
   <footer class="report-footer">
     <span class="footer-note">Auto-refreshed daily at 12:00 Beijing time.</span>
     <span class="footer-note">Data analysis only, not financial advice.</span>
@@ -448,7 +558,8 @@ def main(argv: list[str]) -> int:
     end_date = brief_path.stem
     df = load_metrics(end_date=end_date)
     chart_html = build_interactive_chart(df)
-    html = build_html(title, body_html, chart_html, brief_path, len(df))
+    usdc_estimate_html = build_usdc_estimate_html()
+    html = build_html(title, body_html, chart_html, brief_path, len(df), usdc_estimate_html)
     OUTPUT_PATH.write_text(html, encoding="utf-8")
     print(f"Dashboard written: {OUTPUT_PATH}")
     return 0
