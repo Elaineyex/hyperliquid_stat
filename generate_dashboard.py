@@ -22,15 +22,17 @@ OUTPUT_PATH = ROOT / "dashboard.html"
 
 MD_EXTENSIONS = ["tables", "sane_lists"]
 
-# --- Coinbase USDC reserve-income estimate (off-protocol, NOT in revenue_daily) ---
+# --- AQA (Aligned Quote Asset) USDC reserve-income estimate (off-protocol, NOT in revenue_daily) ---
 # Manual estimate, not a live feed. See logs/2026-07-24-coinbase-usdc-reserve-income-research.md
-# for full sourcing/methodology and caveats before changing these numbers.
+# and logs/2026-07-24-usdc-revenue-vs-user-yield-research.md for full sourcing/methodology and
+# caveats before changing these numbers.
 USDC_ESTIMATE = {
     "as_of": "2026-07-24",
-    "float_usd": 6.0e9,          # JPMorgan est. (2026-07-14, via CoinDesk), ~8% of USDC supply
-    "hl_share": 0.90,             # reported share of reserve income paid to Hyperliquid
+    "float_usd": 6.176e9,         # Coinbase's own AQAv2 activation post (2026-06-08): USDC reserves
+                                   # at activation, 95.06% of Hyperliquid L1 stablecoins
+    "hl_share": 0.90,              # reported share of reserve income paid to Hyperliquid via AQA/AQAv2
     "yield_low": 0.030,
-    "yield_base": 0.035,          # derived from Circle Q1'26 reserve income / avg circulating USDC
+    "yield_base": 0.035,           # derived from Circle Q1'26 reserve income / avg circulating USDC
     "yield_high": 0.040,
 }
 
@@ -281,14 +283,18 @@ def render_brief(md_text: str) -> tuple[str, str]:
 
 
 def build_usdc_estimate_html() -> str:
-    """Render the Coinbase USDC reserve-income estimate card.
+    """Render the AQA (Aligned Quote Asset) USDC reserve-income estimate card.
 
     This is NOT on-chain protocol revenue and is NOT included in revenue_daily,
     revenue_7d_avg, or hype_ps_ratio anywhere else in this dashboard/DB — it's
-    an off-chain interest-income split between Coinbase and Hyperliquid,
-    confirmed absent from ASXN's own rev-fee-breakdown taxonomy. Manual
+    an off-chain interest-income split between Coinbase/Circle and Hyperliquid
+    (the AQA/AQAv2 program), confirmed absent from ASXN's own rev-fee-breakdown
+    taxonomy. It funds the Hyperliquid Assistance Fund's HYPE buybacks directly,
+    separately from HLP/vault yield paid to individual USDC depositors — see the
+    research log for why those are parallel, non-overlapping mechanisms. Manual
     estimate; no live data source exists for the underlying float or yield.
-    See logs/2026-07-24-coinbase-usdc-reserve-income-research.md.
+    See logs/2026-07-24-coinbase-usdc-reserve-income-research.md and
+    logs/2026-07-24-usdc-revenue-vs-user-yield-research.md.
     """
     e = USDC_ESTIMATE
     rows = []
@@ -315,12 +321,16 @@ def build_usdc_estimate_html() -> str:
     return f"""
     <div class="estimate-card">
       <div class="estimate-flag">ESTIMATE &middot; off-protocol &middot; not in revenue_daily</div>
-      <p>JPMorgan (2026-07-14, via CoinDesk/Yahoo Finance/Benzinga) reported that Coinbase now
-      classifies USDC held on Hyperliquid as &quot;on-platform&quot;, collecting the reserve
-      income it generates and paying <strong>90%</strong> of that income back to Hyperliquid.
-      Estimated float: <strong>${e['float_usd']/1e9:.1f}B</strong> (&asymp;8% of USDC circulating
-      supply at the time). No live feed exists for this &mdash; this is a manual, clearly-bounded
-      estimate, not a tracked metric.</p>
+      <p>Hyperliquid's <strong>AQA (Aligned Quote Asset)</strong> program, upgraded to
+      <strong>AQAv2</strong>, designates USDC as the primary margin/spot/perp asset on Hyperliquid
+      and has Coinbase (treasury deployer) and Circle (issuer) share <strong>~90%</strong> of the
+      reserve income earned on USDC held anywhere in the Hyperliquid ecosystem back to Hyperliquid.
+      Per Coinbase's own AQAv2 activation announcement (2026-06-08), USDC reserves stood at
+      <strong>${e['float_usd']/1e9:.2f}B</strong> (95.06% of Hyperliquid L1 stablecoins) when yield
+      began flowing. This income is routed to the <strong>Hyperliquid Assistance Fund</strong>,
+      which executes open-market <strong>$HYPE buybacks</strong> &mdash; it is separate from, and
+      additive to, tracked protocol fee revenue. No live feed exists for this &mdash; this is a
+      manual, clearly-bounded estimate, not a tracked metric.</p>
       <table class="estimate-table">
         <thead><tr><th>Scenario</th><th>Yield</th><th>Annualized</th><th>Monthly</th><th>Daily</th></tr></thead>
         <tbody>
@@ -330,11 +340,15 @@ def build_usdc_estimate_html() -> str:
       <p class="estimate-note">Yield assumption (3.0&ndash;4.0%, base 3.5%) is derived, not disclosed:
       Circle's own Q1'26 reserve income ($653M) &divide; ~$76.15B average circulating USDC
       &asymp; 3.4% annualized, used as a proxy for this float's yield &mdash; roughly consistent
-      with the Fed funds target range at the time (3.50&ndash;3.75%). Float and 90% share are
-      single-sourced to the JPMorgan note; no primary contract has been located for the
-      Coinbase&ndash;Hyperliquid arrangement (unlike Circle&ndash;Coinbase's SEC-filed
-      Collaboration Agreement, which confirms the analogous split there is a recurring monthly
-      payment, not a one-off &mdash; see the research log for details). Confirmed via ASXN's own
+      with the Fed funds target range at the time (3.50&ndash;3.75%). The AQA/AQAv2 program, its
+      90% share, and Assistance-Fund routing are corroborated across multiple secondary outlets
+      (CoinDesk, CryptoBriefing, Bankless) plus Coinbase's own activation post &mdash; stronger than
+      the single-JPMorgan-source framing this estimate started from &mdash; but no primary
+      Hyperliquid governance-forum document has been located (unlike Circle&ndash;Coinbase's
+      SEC-filed Collaboration Agreement, which confirms the analogous split there is a recurring
+      monthly payment, not a one-off). Sources disagree on the accrual timeline (Coinbase's post
+      says yield started 2026-06-08; other reporting cites an Aug 26 accrual start / Oct 3 first
+      Assistance Fund payment) &mdash; unresolved, see research log. Confirmed via ASXN's own
       compiled JS that this income has no path into Hyperliquid's on-chain fee revenue at all.
       As of {e['as_of']}.</p>
     </div>
@@ -529,7 +543,7 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
   <section class="section">
     <div class="section-head">
       <span class="section-num">03</span>
-      <h2 class="section-title">Coinbase USDC Reserve-Income Estimate</h2>
+      <h2 class="section-title">USDC Reserve-Income Estimate (AQA / AQAv2)</h2>
     </div>
     {usdc_estimate_html}
   </section>
