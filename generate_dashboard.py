@@ -322,15 +322,17 @@ def build_usdc_estimate_html() -> str:
     <div class="estimate-card">
       <div class="estimate-flag">ESTIMATE &middot; off-protocol &middot; not in revenue_daily</div>
       <p>Hyperliquid's <strong>AQA (Aligned Quote Asset)</strong> program, upgraded to
-      <strong>AQAv2</strong>, designates USDC as the primary margin/spot/perp asset on Hyperliquid
-      and has Coinbase (treasury deployer) and Circle (issuer) share <strong>~90%</strong> of the
-      reserve income earned on USDC held anywhere in the Hyperliquid ecosystem back to Hyperliquid.
-      Per Coinbase's own AQAv2 activation announcement (2026-06-08), USDC reserves stood at
-      <strong>${e['float_usd']/1e9:.2f}B</strong> (95.06% of Hyperliquid L1 stablecoins) when yield
-      began flowing. This income is routed to the <strong>Hyperliquid Assistance Fund</strong>,
-      which executes open-market <strong>$HYPE buybacks</strong> &mdash; it is separate from, and
-      additive to, tracked protocol fee revenue. No live feed exists for this &mdash; this is a
-      manual, clearly-bounded estimate, not a tracked metric.</p>
+      <strong>AQAv2</strong>, designates USDC as the primary margin/spot/perp asset on Hyperliquid.
+      Under it, Coinbase classifies USDC held on Hyperliquid as &quot;on-platform&quot;, collecting
+      the reserve income it generates and paying <strong>~90%</strong> of that income back to
+      Hyperliquid (Coinbase keeps the remaining ~10%). Per Coinbase's own AQAv2 activation
+      announcement (2026-06-08), USDC reserves stood at <strong>${e['float_usd']/1e9:.2f}B</strong>
+      when yield began flowing &mdash; &asymp;8% of USDC's global circulating supply at the time,
+      and 95.06% of Hyperliquid L1's own stablecoin base. This income is routed to the
+      <strong>Hyperliquid Assistance Fund</strong>, which executes open-market
+      <strong>$HYPE buybacks</strong> &mdash; it is separate from, and additive to, tracked protocol
+      fee revenue. No live feed exists for this &mdash; this is a manual, clearly-bounded estimate,
+      not a tracked metric.</p>
       <table class="estimate-table">
         <thead><tr><th>Scenario</th><th>Yield</th><th>Annualized</th><th>Monthly</th><th>Daily</th></tr></thead>
         <tbody>
