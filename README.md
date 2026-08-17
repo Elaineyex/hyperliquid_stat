@@ -42,4 +42,4 @@ Deep-dive revenue breakdown by source, native vs. HIP-3 volume/revenue split, an
 
 ## Data
 
-`hyperliquid_stats.db` (single table, `daily_metrics`) is committed to the repo and covers 2024-12-23 to present. Generated markdown reports, PNG charts, logs, caches, and other fetched-data snapshots are gitignored.
+`hyperliquid_stats.db` (single table, `daily_metrics`, 2024-12-23 to present) is gitignored and local-only — not versioned. Generated markdown reports, PNG charts, logs, caches, and other fetched-data snapshots are gitignored too.

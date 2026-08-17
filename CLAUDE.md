@@ -26,7 +26,7 @@ The revenue breakdown (`generate_revenue_breakdown.py`) is **separate** and run 
 | `generate_revenue_breakdown.py` | On-demand script — deep revenue breakdown by source, volume context, HIP-3 builder table. Run as `python generate_revenue_breakdown.py YYYY-MM-DD` |
 | `generate_dashboard.py` | Produces `dashboard.html` (gitignored). Run automatically as the last step of `run_daily_report.sh` (daily cron); can also be run standalone/manually for the same day's brief. Includes a live USDC-float chart (DefiLlama) and AQA/AQAv2 reserve-income estimate — see `USDC_ESTIMATE` and `fetch_usdc_float_series()` — plus an interactive $HYPE P/S explorer |
 | `db.py` | SQLite helper — schema creation and upsert logic for `daily_metrics` |
-| `hyperliquid_stats.db` | SQLite database, committed to repo (2024-12-23 to present, 550+ rows) |
+| `hyperliquid_stats.db` | SQLite database (2024-12-23 to present, 550+ rows). Gitignored as of 2026-08-17 — local-only, not versioned. Was committed before that; still in git history on commits up to `2c1b139` |
 | `backfill_since_tge.py` | Backfills DB from token-generation event forward |
 | `requirements.txt` | Python deps — install in `.venv` via `pip install -r requirements.txt` |
 | `AUTOMATION.md` | launchd setup docs (in Chinese). Cron runs at 12:00 local = 04:00 UTC |

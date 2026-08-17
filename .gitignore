@@ -13,7 +13,6 @@ logs/
 *.log
 cron.log
 *.db
-!hyperliquid_stats.db
 *.sqlite
 *.sqlite3
 *.png
