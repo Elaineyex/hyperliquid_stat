@@ -32,6 +32,8 @@ Builds `dashboard.html`: the interactive macro chart, the morning brief, a live 
 
 `dashboard.html` is normally gitignored and regenerated fresh on each daily run rather than tracked — it's a point-in-time snapshot, not a versioned artifact. Regenerate it locally any time to get current numbers.
 
+The `index.html` published in this repo (for GitHub Pages) is a one-off snapshot frozen on **2026-08-17** — it does not auto-update. Regenerate and re-push it manually for current numbers.
+
 ## Optional Revenue Breakdown
 
 ```bash
