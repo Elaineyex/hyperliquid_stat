@@ -11,6 +11,7 @@ Daily analytics pipeline for the Hyperliquid protocol. Every day at **12:00 Beij
 1. `logs/YYYY-MM-DD.md` — the `$HYPE` morning brief (price, revenue, valuation, market commentary)
 2. `hyperliquid_6m_macro_trend.png` — 6-month macro trend chart (overwritten each run)
 3. A row written to `hyperliquid_stats.db` with that day's metrics
+4. `dashboard.html` — interactive dashboard (gitignored, regenerated fresh each run, not committed): macro chart, morning brief, a live USDC-float chart + AQA/AQAv2 reserve-income estimate, and an interactive $HYPE P/S explorer
 
 The revenue breakdown (`generate_revenue_breakdown.py`) is **separate** and run manually on request.
 
@@ -20,10 +21,10 @@ The revenue breakdown (`generate_revenue_breakdown.py`) is **separate** and run 
 
 | File | Purpose |
 | :--- | :--- |
-| `run_daily_report.sh` | Shell entry point for the daily cron. Calls `plot_macro_trend.py`, parses stdout, writes `logs/YYYY-MM-DD.md` |
+| `run_daily_report.sh` | Shell entry point for the daily cron. Calls `plot_macro_trend.py`, parses stdout, writes `logs/YYYY-MM-DD.md`, then calls `generate_dashboard.py` to (re)build `dashboard.html` |
 | `plot_macro_trend.py` | Main daily script — fetches HYPE/BTC prices, DefiLlama revenue, computes P/S, writes DB row, prints structured output |
 | `generate_revenue_breakdown.py` | On-demand script — deep revenue breakdown by source, volume context, HIP-3 builder table. Run as `python generate_revenue_breakdown.py YYYY-MM-DD` |
-| `generate_dashboard.py` | Produces `dashboard.html` (gitignored). Standalone, run manually |
+| `generate_dashboard.py` | Produces `dashboard.html` (gitignored). Run automatically as the last step of `run_daily_report.sh` (daily cron); can also be run standalone/manually for the same day's brief. Includes a live USDC-float chart (DefiLlama) and AQA/AQAv2 reserve-income estimate — see `USDC_ESTIMATE` and `fetch_usdc_float_series()` — plus an interactive $HYPE P/S explorer |
 | `db.py` | SQLite helper — schema creation and upsert logic for `daily_metrics` |
 | `hyperliquid_stats.db` | SQLite database, committed to repo (2024-12-23 to present, 550+ rows) |
 | `backfill_since_tge.py` | Backfills DB from token-generation event forward |
