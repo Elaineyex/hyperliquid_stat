@@ -17,6 +17,7 @@ import plotly.graph_objects as go
 import requests
 
 STABLECOIN_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/Hyperliquid%20L1"
+COINGECKO_COIN_IDS = {"hype": "hyperliquid", "bnb": "binancecoin"}
 
 ROOT = Path(__file__).resolve().parent
 LOGS_DIR = ROOT / "logs"
@@ -325,6 +326,60 @@ def fetch_usdc_float_series() -> pd.DataFrame:
     if df.empty:
         return df
     return df.sort_values("date").reset_index(drop=True)
+
+
+def fetch_coin_market_stats(coin_id: str) -> dict:
+    """Fetch current USD price and fully-diluted valuation for a CoinGecko coin id.
+
+    Returns {"price": float | None, "fdv": float | None}. On any failure both
+    are None so the dashboard build can render a live-fetch failure
+    gracefully (as an em dash in the UI) instead of crashing.
+    """
+    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}"
+    params = {
+        "localization": "false", "tickers": "false", "market_data": "true",
+        "community_data": "false", "developer_data": "false", "sparkline": "false",
+    }
+    try:
+        resp = requests.get(url, params=params, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        resp.raise_for_status()
+        market_data = resp.json()["market_data"]
+        return {
+            "price": market_data.get("current_price", {}).get("usd"),
+            "fdv": market_data.get("fully_diluted_valuation", {}).get("usd"),
+        }
+    except Exception as exc:
+        print(f"CoinGecko market stats fetch failed for {coin_id}: {exc}", file=sys.stderr)
+        return {"price": None, "fdv": None}
+
+
+def build_fdv_stats_html(hype_stats: dict, bnb_stats: dict) -> str:
+    """Render a small live stat row: HYPE/BNB price + fully-diluted valuation.
+
+    Supplements the brief's own static, once-daily Valuation table with a
+    couple of live-refreshed CoinGecko figures. Missing values (fetch
+    failure) render as an em dash rather than raising.
+    """
+    def fmt_usd(v):
+        if v is None:
+            return "—"
+        if v >= 1e9:
+            return f"${v / 1e9:,.2f}B"
+        if v >= 1e6:
+            return f"${v / 1e6:,.1f}M"
+        return f"${v:,.2f}"
+
+    return f"""
+    <div class="fdv-stats">
+      <div class="estimate-flag">LIVE &middot; CoinGecko</div>
+      <div class="readout-grid">
+        <div class="readout-card"><div class="lbl">HYPE Price</div><div class="val">{fmt_usd(hype_stats['price'])}</div></div>
+        <div class="readout-card"><div class="lbl">HYPE FDV</div><div class="val">{fmt_usd(hype_stats['fdv'])}</div></div>
+        <div class="readout-card"><div class="lbl">BNB Price</div><div class="val">{fmt_usd(bnb_stats['price'])}</div></div>
+        <div class="readout-card"><div class="lbl">BNB FDV</div><div class="val">{fmt_usd(bnb_stats['fdv'])}</div></div>
+      </div>
+    </div>
+"""
 
 
 def build_usdc_float_chart_html(df: pd.DataFrame) -> str:
@@ -876,6 +931,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body);
   background: var(--bg-2); border-radius: var(--radius);
   color: var(--ink-3); font-size: 12px; border: none; }
 .brief-card blockquote p { margin: 0; color: var(--ink-3); }
+.fdv-stats { margin-top: 14px; }
 
 .brief-card table { width: 100%; border-collapse: collapse; font-size: 12px;
   margin: 4px 0 14px; font-family: var(--font-mono); }
@@ -966,7 +1022,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body);
 
 def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
                row_count: int, usdc_float_chart_html: str, usdc_estimate_html: str,
-               ps_explorer_html: str) -> str:
+               ps_explorer_html: str, fdv_stats_html: str) -> str:
     now_beijing = datetime.now(timezone(timedelta(hours=8)))
     generated = now_beijing.strftime("%Y-%m-%d %H:%M")
     safe_title = title or "Hyperliquid Dashboard"
@@ -1017,6 +1073,7 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
     <div class="brief-card">
 {body_html}
     </div>
+    {fdv_stats_html}
   </section>
 
   <section class="section">
@@ -1071,8 +1128,13 @@ def main(argv: list[str]) -> int:
     usdc_estimate_html = build_usdc_estimate_html(live_float_usd)
     ps_explorer_html = build_ps_explorer_html(live_float_usd)
 
+    hype_stats = fetch_coin_market_stats(COINGECKO_COIN_IDS["hype"])
+    bnb_stats = fetch_coin_market_stats(COINGECKO_COIN_IDS["bnb"])
+    fdv_stats_html = build_fdv_stats_html(hype_stats, bnb_stats)
+
     html = build_html(title, body_html, chart_html, brief_path, len(df),
-                       usdc_float_chart_html, usdc_estimate_html, ps_explorer_html)
+                       usdc_float_chart_html, usdc_estimate_html, ps_explorer_html,
+                       fdv_stats_html)
     OUTPUT_PATH.write_text(html, encoding="utf-8")
     print(f"Dashboard written: {OUTPUT_PATH}")
     return 0
