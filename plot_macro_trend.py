@@ -541,9 +541,10 @@ def plot_combined_data(hype_df, btc_df, revenue_df, market_cap_df=None):
 if __name__ == "__main__":
     hype_df = get_sdk_price_history("HYPE")
     btc_df = get_sdk_price_history("BTC")
+    bnb_df = get_sdk_price_history("BNB")
     rev_df = get_protocol_revenue_history()
 
-    if all(d is not None for d in [hype_df, btc_df, rev_df]):
+    if all(d is not None for d in [hype_df, btc_df, bnb_df, rev_df]):
         report_date = target_date
         revenue_date = report_date - timedelta(days=1)
         try:
@@ -574,6 +575,9 @@ if __name__ == "__main__":
         btc_7d_chg = (btc_now/btc_7d-1)*100
         btc_30d_chg = (btc_now/btc_30d-1)*100
         print(f"BTC Price:     ${btc_now:,.0f}  ({btc_1d_chg:+.1f}% 1d | {btc_7d_chg:+.1f}% 7d | {btc_30d_chg:+.1f}% 30d)")
+
+        bnb_now = bnb_df['BNB_price'].iloc[-1]
+        print(f"BNB Price:     ${bnb_now:,.2f}")
 
         latest_rev  = revenue_metrics["latest_rev"]
         prev_rev    = revenue_metrics["prev_rev"]
@@ -607,6 +611,7 @@ if __name__ == "__main__":
             'btc_1d_chg': float(btc_1d_chg),
             'btc_7d_chg': float(btc_7d_chg),
             'btc_30d_chg': float(btc_30d_chg),
+            'bnb_price': float(bnb_now),
             'revenue_daily': float(latest_rev),
             'revenue_7d_avg': float(rev_7d_avg),
             'revenue_30d_avg': float(rev_30d_avg),
