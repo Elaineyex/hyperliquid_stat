@@ -133,7 +133,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
     color_hype = "#1A4FA8"
     color_btc = "#8A5C00"
     color_ps = "#7A3DAA"
-    color_bnb = "#0E7C86"
+    color_bnb = "#C2185B"
     grid = "rgba(24,24,15,0.08)"
     ink = "#18180F"
     ink_3 = "#8A897E"
