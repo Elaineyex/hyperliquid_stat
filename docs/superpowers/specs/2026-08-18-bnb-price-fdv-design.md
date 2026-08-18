@@ -66,7 +66,7 @@ One-off script, not part of the daily cron:
 - `load_metrics()`: add `bnb_price` to the `SELECT`.
 - `build_interactive_chart()`: add a 5th trace (`go.Scatter`, BNB price) on
   a new `yaxis5`, `overlaying="y", side="right", anchor="free", position=1.07`.
-  Color `#0E7C86` (teal) — chosen to stay visually distinct from the existing
+  Color `#C2185B` (magenta/crimson) — chosen to stay visually distinct from the existing
   five colors already in use (`color_rev` green, `color_hype` blue,
   `color_btc` brown-amber, `color_ps` purple, plus the AQA amber elsewhere on
   the page); BNB's own brand yellow was considered and rejected as too close

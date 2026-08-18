@@ -16,7 +16,7 @@
 
 - New DB column name: `bnb_price` (REAL). No `bnb_1d_chg`/`7d_chg`/`30d_chg` columns.
 - TGE date for backfill: `2024-11-29` (matches `backfill_since_tge.py`'s `TGE_DATE`).
-- BNB chart trace color: `#0E7C86` (teal) — chosen to stay visually distinct from the 5 colors already on the page (green/blue/brown-amber/purple/amber). BNB's brand yellow was considered and rejected as too close to the existing amber.
+- BNB chart trace color: `#0E7C86` (teal) — chosen to stay visually distinct from the 5 colors already on the page (green/blue/brown-amber/purple/amber). BNB's brand yellow was considered and rejected as too close to the existing amber. (Note: later changed to `#C2185B` — see below.)
 - BNB chart axis: `yaxis5`, `overlaying="y", side="right", anchor="free", position=1.07`.
 - CoinGecko coin ids: `"hyperliquid"` (HYPE) and `"binancecoin"` (BNB).
 - No BNB line on the static matplotlib PNG (`hyperliquid_6m_macro_trend.png`) — dashboard.html only.
@@ -465,7 +465,7 @@ to:
     color_hype = "#1A4FA8"
     color_btc = "#8A5C00"
     color_ps = "#7A3DAA"
-    color_bnb = "#0E7C86"
+    color_bnb = "#C2185B"
     grid = "rgba(24,24,15,0.08)"
 ```
 
@@ -846,3 +846,10 @@ git commit -m "Add live HYPE/BNB FDV stats under the Morning Brief section"
 - **Spec coverage:** Section 1 (schema) → Task 1. Section 2 (backfill) → Task 2. Section 3 (daily fetch) → Task 3. Section 4 (chart) → Task 4. Section 5 (FDV stats) → Task 5. Out-of-scope items (static PNG, brief markdown, chg columns) are explicitly not touched by any task.
 - **Placeholder scan:** No TBD/TODO; every step has literal code or a literal shell command with expected output.
 - **Type consistency:** `fetch_coin_market_stats` returns `{"price": ..., "fdv": ...}` in Task 5 Step 2, and `build_fdv_stats_html` (Step 3) and the verification steps (7, 8) consume exactly those two keys. `build_interactive_chart` (Task 4) reads `df["bnb_price"]`, which is selected by `load_metrics` in the same task's Step 1, populated by `upsert_daily`'s `record.get('bnb_price')` from Task 1, itself fed by `bnb_now` computed in Task 3. `build_html`'s new `fdv_stats_html` parameter (Task 5 Step 5) is passed positionally in `main()` (Task 5 Step 6) in matching order.
+
+## Post-Merge Note
+
+`color_bnb` was changed from `#0E7C86` (teal, this plan's original value) to `#C2185B`
+(magenta/crimson) after implementation, at the user's explicit request — the teal read as
+too visually close to `color_rev` (`#0B6E4F`, the daily-revenue line/bars) on the rendered
+chart. See commit `88785e5`.

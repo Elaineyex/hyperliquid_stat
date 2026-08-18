@@ -28,6 +28,7 @@ The revenue breakdown (`generate_revenue_breakdown.py`) is **separate** and run 
 | `db.py` | SQLite helper — schema creation and upsert logic for `daily_metrics` |
 | `hyperliquid_stats.db` | SQLite database (2024-12-23 to present, 550+ rows). Gitignored as of 2026-08-17 — local-only, not versioned. Was committed before that; still in git history on commits up to `2c1b139` |
 | `backfill_since_tge.py` | Backfills DB from token-generation event forward |
+| `backfill_bnb.py` | One-off script — backfills `bnb_price` on existing `daily_metrics` rows from Hyperliquid candle history. Not part of the daily cron; run manually if re-backfilling. |
 | `requirements.txt` | Python deps — install in `.venv` via `pip install -r requirements.txt` |
 | `AUTOMATION.md` | launchd setup docs (in Chinese). Cron runs at 12:00 local = 04:00 UTC |
 
@@ -52,7 +53,7 @@ date TEXT (PK), hype_price, hype_1d_chg, hype_7d_chg, hype_30d_chg,
 btc_price, btc_1d_chg, btc_7d_chg, btc_30d_chg,
 revenue_daily, revenue_7d_avg, revenue_30d_avg, revenue_7d_vs_30d,
 created_at, hype_circulating_supply, hype_total_supply,
-hype_circulating_pct, hype_market_cap, hype_ps_ratio
+hype_circulating_pct, hype_market_cap, hype_ps_ratio, bnb_price
 ```
 
 **Revenue column semantics**: `revenue_daily` is DefiLlama `dailyRevenue` for all Hyperliquid sources minus a small Spectra V2 adjustment. It is **net protocol revenue** as reported by DefiLlama, not gross trading volume.
