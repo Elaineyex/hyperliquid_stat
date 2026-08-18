@@ -577,7 +577,6 @@ from generate_dashboard import load_metrics, build_interactive_chart
 df = load_metrics()
 html = build_interactive_chart(df)
 assert 'BNB Price' in html, 'BNB trace missing from chart HTML'
-assert 'yaxis5' not in html or True  # plotly renders axis refs internally; presence of trace name is the real signal
 print('OK, chart HTML length:', len(html))
 "
 ```
