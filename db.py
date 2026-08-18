@@ -28,6 +28,7 @@ def init_db(db_path: Path):
             hype_circulating_pct REAL,
             hype_market_cap REAL,
             hype_ps_ratio REAL,
+            bnb_price REAL,
             created_at       TEXT
         )
     """)
@@ -38,6 +39,7 @@ def init_db(db_path: Path):
         "hype_circulating_pct",
         "hype_market_cap",
         "hype_ps_ratio",
+        "bnb_price",
     ):
         try:
             cursor.execute(f"ALTER TABLE daily_metrics ADD COLUMN {column_name} REAL")
@@ -64,8 +66,8 @@ def upsert_daily(db_path: Path, record: dict):
             btc_price, btc_1d_chg, btc_7d_chg, btc_30d_chg,
             revenue_daily, revenue_7d_avg, revenue_30d_avg, revenue_7d_vs_30d,
             hype_circulating_supply, hype_total_supply, hype_circulating_pct,
-            hype_market_cap, hype_ps_ratio, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            hype_market_cap, hype_ps_ratio, bnb_price, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         record['date'],
         record.get('hype_price'),
@@ -85,6 +87,7 @@ def upsert_daily(db_path: Path, record: dict):
         record.get('hype_circulating_pct'),
         record.get('hype_market_cap'),
         record.get('hype_ps_ratio'),
+        record.get('bnb_price'),
         record['created_at']
     ))
 
