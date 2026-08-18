@@ -102,7 +102,7 @@ def load_metrics(end_date: str | None = None) -> pd.DataFrame:
     conn = sqlite3.connect(DB_PATH)
     try:
         df = pd.read_sql_query(
-            "SELECT date, hype_price, btc_price, revenue_daily, "
+            "SELECT date, hype_price, btc_price, bnb_price, revenue_daily, "
             "revenue_7d_avg, hype_ps_ratio, hype_market_cap "
             "FROM daily_metrics ORDER BY date ASC",
             conn,
@@ -132,6 +132,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
     color_hype = "#1A4FA8"
     color_btc = "#8A5C00"
     color_ps = "#7A3DAA"
+    color_bnb = "#0E7C86"
     grid = "rgba(24,24,15,0.08)"
     ink = "#18180F"
     ink_3 = "#8A897E"
@@ -169,6 +170,15 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
         yaxis="y3",
         hovertemplate="<b>%{x|%Y-%m-%d}</b><br>BTC: $%{y:,.0f}<extra></extra>",
     ))
+    if df["bnb_price"].notna().any():
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["bnb_price"],
+            name="BNB Price",
+            mode="lines",
+            line=dict(color=color_bnb, width=1.6, dash="dash"),
+            yaxis="y5",
+            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>BNB: $%{y:,.0f}<extra></extra>",
+        ))
     if df["hype_ps_ratio"].notna().any():
         fig.add_trace(go.Scatter(
             x=df["date"], y=df["hype_ps_ratio"],
@@ -187,7 +197,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
             color=ink, size=12,
         ),
-        margin=dict(l=80, r=170, t=70, b=70),
+        margin=dict(l=80, r=220, t=70, b=70),
         height=560,
         legend=dict(
             orientation="h", yanchor="bottom", y=1.06,
@@ -201,7 +211,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             font=dict(family="'IBM Plex Mono', monospace", size=11, color=ink),
         ),
         xaxis=dict(
-            domain=[0.0, 0.86],
+            domain=[0.0, 0.82],
             range=[
                 (df["date"].max() - pd.Timedelta(days=180)).isoformat(),
                 df["date"].max().isoformat(),
@@ -264,6 +274,15 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             overlaying="y", side="right", anchor="free", position=1.0,
             tickfont=dict(family="'IBM Plex Mono', monospace",
                           size=11, color=color_ps),
+            showgrid=False, zeroline=False,
+        ),
+        yaxis5=dict(
+            title=dict(text="BNB Price",
+                       font=dict(color=color_bnb, size=12)),
+            tickprefix="$", tickformat=".2s",
+            overlaying="y", side="right", anchor="free", position=1.07,
+            tickfont=dict(family="'IBM Plex Mono', monospace",
+                          size=11, color=color_bnb),
             showgrid=False, zeroline=False,
         ),
     )
