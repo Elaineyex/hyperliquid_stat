@@ -1,5 +1,7 @@
 # Hyperliquid Stats
 
+View sample dashboard here: https://elaineyex.github.io/hyperliquid_stat/ 
+
 Daily analytics pipeline for the Hyperliquid protocol: a `$HYPE` morning brief (price action, protocol revenue, valuation, market commentary), a 6-month macro trend chart, a row appended to a tracked SQLite database, and an interactive HTML dashboard.
 
 See `CLAUDE.md` for the full file-by-file breakdown and data-source notes.
