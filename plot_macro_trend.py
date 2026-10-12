@@ -11,6 +11,7 @@ from pathlib import Path
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
 from db import init_db, upsert_daily
+from aqa import aqa_annualized_as_of, fetch_aqa_payouts
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = Path(SCRIPT_DIR) / "hyperliquid_stats.db"
@@ -449,7 +450,7 @@ def get_revenue_metrics(revenue_df, revenue_date):
     }
 
 
-def plot_combined_data(hype_df, btc_df, revenue_df, market_cap_df=None):
+def plot_combined_data(hype_df, btc_df, revenue_df, market_cap_df=None, aqa_payouts=None):
     print("Generating 6-month multi-asset plot...")
     
     # Merge all
@@ -470,6 +471,10 @@ def plot_combined_data(hype_df, btc_df, revenue_df, market_cap_df=None):
     df['revenue_7d_avg'] = df['revenue'].rolling(window=7).mean()
     if 'hype_market_cap' in df.columns:
         df['hype_ps_ratio'] = df['hype_market_cap'] / (df['revenue_7d_avg'] * 365)
+        if aqa_payouts:
+            aqa_ann = pd.Series([aqa_annualized_as_of(aqa_payouts, d.date()) for d in df.index], index=df.index)
+            # Only from the first AQA payout onward; NaN before so the line starts when money arrived
+            df['hype_ps_ratio_incl_aqa'] = (df['hype_market_cap'] / (df['revenue_7d_avg'] * 365 + aqa_ann)).where(aqa_ann > 0)
 
     # Create Plot with multiple Y-axes
     fig, ax1 = plt.subplots(figsize=(15, 8))
@@ -508,7 +513,9 @@ def plot_combined_data(hype_df, btc_df, revenue_df, market_cap_df=None):
         ax4.spines['right'].set_position(('outward', 120))
         color_ps = '#9467bd' # Purple
         ax4.set_ylabel('HYPE P/S (7d revenue annualized)', color=color_ps, fontsize=11, fontweight='bold')
-        ax4.plot(df.index, df['hype_ps_ratio'], color=color_ps, linewidth=2, linestyle='-.', label='HYPE P/S')
+        ax4.plot(df.index, df['hype_ps_ratio'], color=color_ps, linewidth=2, linestyle='-.', label='HYPE P/S (on-chain)')
+        if 'hype_ps_ratio_incl_aqa' in df.columns:
+            ax4.plot(df.index, df['hype_ps_ratio_incl_aqa'], color=color_ps, linewidth=2.2, label='HYPE P/S (incl. AQAv2)')
         ax4.tick_params(axis='y', labelcolor=color_ps)
         ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.0f}x'))
 
@@ -599,6 +606,19 @@ if __name__ == "__main__":
         print(f"HYPE Valuation: circulating {hype_valuation['circulating_pct']:.1f}% of {hype_valuation['total_supply']:,.0f} supply  [{hype_valuation['date']}]")
         print(f"  Market Cap:  ${hype_valuation['market_cap']:,.0f}")
         print(f"  P/S 7d ann:  {hype_valuation['ps_ratio']:.1f}x")
+        # AQAv2 USDC reserve income is not in DefiLlama revenue; add its latest payout
+        # (annualized) on top for the headline P/S. None if the HL ledger fetch failed.
+        aqa_payouts = fetch_aqa_payouts()
+        aqa_ann = aqa_annualized_as_of(aqa_payouts, datetime.strptime(revenue_day, "%Y-%m-%d").date())
+        ps_incl_aqa = None
+        if aqa_ann:
+            ps_incl_aqa = hype_valuation['market_cap'] / (rev_7d_avg * 365 + aqa_ann)
+            print(f"  AQAv2 ann:   ${aqa_ann:,.0f}")
+            print(f"  P/S incl AQA: {ps_incl_aqa:.1f}x")
+        elif aqa_ann == 0:
+            print("  P/S incl AQA: n/a (no AQA payout received yet)")
+        else:
+            print("  P/S incl AQA: unavailable (AQA payout fetch failed)")
 
         print(f"{'='*50}\n")
 
@@ -623,7 +643,9 @@ if __name__ == "__main__":
             'hype_total_supply': float(hype_valuation['total_supply']),
             'hype_circulating_pct': float(hype_valuation['circulating_pct']),
             'hype_market_cap': float(hype_valuation['market_cap']),
-            'hype_ps_ratio': float(hype_valuation['ps_ratio'])
+            'hype_ps_ratio': float(hype_valuation['ps_ratio']),
+            'aqa_revenue_annualized': aqa_ann,
+            'hype_ps_ratio_incl_aqa': ps_incl_aqa,
         })
         print(f"Metrics persisted to database: {DB_PATH}")
 
@@ -633,6 +655,6 @@ if __name__ == "__main__":
             print(f"Failed to fetch HYPE market cap history from CoinGecko: {e}")
             sys.exit(1)
 
-        plot_combined_data(hype_df, btc_df, rev_df, market_cap_df)
+        plot_combined_data(hype_df, btc_df, rev_df, market_cap_df, aqa_payouts)
     else:
         print("Failed to collect all data points.")

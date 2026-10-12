@@ -25,6 +25,7 @@ The revenue breakdown (`generate_revenue_breakdown.py`) is **separate** and run 
 | `plot_macro_trend.py` | Main daily script — fetches HYPE/BTC prices, DefiLlama revenue, computes P/S, writes DB row, prints structured output |
 | `generate_revenue_breakdown.py` | On-demand script — deep revenue breakdown by source, volume context, HIP-3 builder table. Run as `python generate_revenue_breakdown.py YYYY-MM-DD` |
 | `generate_dashboard.py` | Produces `dashboard.html` (gitignored). Run automatically as the last step of `run_daily_report.sh` (daily cron); can also be run standalone/manually for the same day's brief. Includes a live USDC-float chart (DefiLlama) and AQA/AQAv2 reserve-income estimate — see `USDC_ESTIMATE` and `fetch_usdc_float_series()` — plus an interactive $HYPE P/S explorer |
+| `aqa.py` | AQAv2 USDC reserve-income payouts, read from the Assistance Fund ledger on the HL API (system sends from `0x5000…0000`). Used by `plot_macro_trend.py` (P/S incl. AQA) and `generate_dashboard.py`. See `logs/2026-10-12-aqav2-first-payout.md` |
 | `db.py` | SQLite helper — schema creation and upsert logic for `daily_metrics` |
 | `hyperliquid_stats.db` | SQLite database (2024-12-23 to present, 550+ rows). Gitignored as of 2026-08-17 — local-only, not versioned. Was committed before that; still in git history on commits up to `2c1b139` |
 | `backfill_since_tge.py` | Backfills DB from token-generation event forward |
@@ -53,8 +54,11 @@ date TEXT (PK), hype_price, hype_1d_chg, hype_7d_chg, hype_30d_chg,
 btc_price, btc_1d_chg, btc_7d_chg, btc_30d_chg,
 revenue_daily, revenue_7d_avg, revenue_30d_avg, revenue_7d_vs_30d,
 created_at, hype_circulating_supply, hype_total_supply,
-hype_circulating_pct, hype_market_cap, hype_ps_ratio, bnb_price
+hype_circulating_pct, hype_market_cap, hype_ps_ratio, bnb_price,
+aqa_revenue_annualized, hype_ps_ratio_incl_aqa
 ```
+
+**P/S columns**: `hype_ps_ratio` = market cap ÷ (`revenue_7d_avg` × 365), on-chain only. `hype_ps_ratio_incl_aqa` = market cap ÷ (`revenue_7d_avg` × 365 + `aqa_revenue_annualized`) — the headline P/S. `aqa_revenue_annualized` = latest AQAv2 payout to the Assistance Fund paid on/before that date × 365/30 (0 before the first payout on 2026-10-04; `hype_ps_ratio_incl_aqa` is NULL on those rows so the line starts at the first payout). See `aqa.py`.
 
 **Revenue column semantics**: `revenue_daily` is DefiLlama `dailyRevenue` for all Hyperliquid sources minus a small Spectra V2 adjustment. It is **net protocol revenue** as reported by DefiLlama, not gross trading volume.
 
@@ -80,6 +84,7 @@ Key request types:
 - `{"type": "metaAndAssetCtxs"}` — all native perp markets with current price, OI, funding, `dayNtlVlm`
 - `{"type": "perpDexs"}` — HIP-3 builder dex metadata: deployer address, `deployerFeeScale`, `assetToStreamingOiCap` (list of `[market_name, cap]` pairs)
 - `{"type": "candleSnapshot", "req": {"coin": "BTC", "interval": "1d", "startTime": MS, "endTime": MS}}` — OHLCV candles. `v` field is base-asset volume; multiply by `(o+c)/2` to get USD notional
+- `{"type": "userNonFundingLedgerUpdates", "user": "0xfefe…fefe", "startTime": MS}` — Assistance Fund ledger; AQAv2 payouts are USDC sends from `0x5000000000000000000000000000000000000000` (monthly, accrued daily, paid 8 days after each 30-day interval). Not in DefiLlama revenue
 - `{"type": "globalStats"}` — `{"totalVolume": ..., "dailyVolume": ..., "nUsers": ...}` (aggregate only)
 
 **What the HL API does NOT expose**: historical protocol fee revenue per market. Per-market fee revenue requires L1 transaction-level data.

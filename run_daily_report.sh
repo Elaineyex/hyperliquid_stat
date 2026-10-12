@@ -29,6 +29,8 @@ REV_30D=$(printf '%s\n' "$OUTPUT" | grep "30d avg:" || true)
 VAL_LINE=$(printf '%s\n' "$OUTPUT" | grep "HYPE Valuation:" || true)
 MARKET_CAP_LINE=$(printf '%s\n' "$OUTPUT" | grep "Market Cap:" || true)
 PS_LINE=$(printf '%s\n' "$OUTPUT" | grep "P/S 7d ann:" || true)
+AQA_ANN_LINE=$(printf '%s\n' "$OUTPUT" | grep "AQAv2 ann:" || true)
+PS_AQA_LINE=$(printf '%s\n' "$OUTPUT" | grep "P/S incl AQA:" || true)
 
 HYPE_PRICE=$(printf '%s\n' "$HYPE_LINE" | grep -oE '\$[0-9]+\.[0-9]+' | head -1 || true)
 HYPE_1D=$(printf '%s\n' "$HYPE_LINE" | grep -oE '[+-][0-9]+\.[0-9]+% 1d' | sed 's/ 1d//' || true)
@@ -49,6 +51,9 @@ CIRC_PCT=$(printf '%s\n' "$VAL_LINE" | grep -oE '[0-9]+\.[0-9]+% of' | sed 's/ o
 TOTAL_SUPPLY=$(printf '%s\n' "$VAL_LINE" | grep -oE 'of [0-9,]+ supply' | sed 's/of //; s/ supply//' || true)
 HYPE_MARKET_CAP=$(printf '%s\n' "$MARKET_CAP_LINE" | grep -oE '\$[0-9,]+' | head -1 || true)
 HYPE_PS=$(printf '%s\n' "$PS_LINE" | grep -oE '[0-9]+\.[0-9]+x' | head -1 || true)
+# Optional: empty if the AQA payout fetch failed (brief then shows on-chain P/S only)
+AQA_ANN=$(printf '%s\n' "$AQA_ANN_LINE" | grep -oE '\$[0-9,]+' | head -1 || true)
+HYPE_PS_AQA=$(printf '%s\n' "$PS_AQA_LINE" | grep -oE '[0-9]+\.[0-9]+x' | head -1 || true)
 
 REQUIRED_VARS=(
   HYPE_PRICE HYPE_1D HYPE_7D HYPE_30D
@@ -69,7 +74,7 @@ export TODAY LOG_FILE
 export HYPE_PRICE HYPE_1D HYPE_7D HYPE_30D
 export BTC_PRICE BTC_1D BTC_7D BTC_30D
 export REV_TODAY REV_DOD REV_7D_AVG REV_30D_AVG REV_7D_VS_30D
-export CIRC_PCT TOTAL_SUPPLY HYPE_MARKET_CAP HYPE_PS
+export CIRC_PCT TOTAL_SUPPLY HYPE_MARKET_CAP HYPE_PS AQA_ANN HYPE_PS_AQA
 
 python - <<'PY'
 import math
@@ -136,6 +141,15 @@ circ_pct_raw = os.environ["CIRC_PCT"]
 total_supply_raw = os.environ["TOTAL_SUPPLY"]
 hype_market_cap_raw = os.environ["HYPE_MARKET_CAP"]
 hype_ps_raw = os.environ["HYPE_PS"]
+aqa_ann_raw = os.environ.get("AQA_ANN", "")
+hype_ps_aqa_raw = os.environ.get("HYPE_PS_AQA", "")
+if hype_ps_aqa_raw:
+    aqa_rows = (
+        f"| **P/S, 7d revenue annualized + AQAv2** | **{hype_ps_aqa_raw}** |\n"
+        f"| AQAv2 revenue, latest payout annualized | {fmt_compact_money(parse_money(aqa_ann_raw))} |\n"
+    )
+else:
+    aqa_rows = "| P/S incl. AQAv2 | n/a (no AQA payout yet, or payout fetch failed) |\n"
 hype_market_cap_display = fmt_compact_money(parse_money(hype_market_cap_raw))
 
 hype_price = parse_money(hype_price_raw)
@@ -338,7 +352,7 @@ report = f"""# $HYPE Morning Brief - {today}
 | :--- | :--- |
 | Circulating supply | {circ_pct_raw} of {total_supply_raw} |
 | Market cap | {hype_market_cap_display} |
-| P/S, 7d revenue annualized | {hype_ps_raw} |
+{aqa_rows}| P/S, 7d revenue annualized (on-chain only) | {hype_ps_raw} |
 
 **Investment Summary**
 - **Market Regime:** {market_regime}

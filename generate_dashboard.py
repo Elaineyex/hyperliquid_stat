@@ -16,6 +16,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 
+from aqa import fetch_aqa_payouts
+
 STABLECOIN_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/Hyperliquid%20L1"
 COINGECKO_COIN_IDS = {"hype": "hyperliquid", "bnb": "binancecoin"}
 
@@ -26,25 +28,30 @@ OUTPUT_PATH = ROOT / "dashboard.html"
 
 MD_EXTENSIONS = ["tables", "sane_lists"]
 
-# --- AQA (Aligned Quote Asset) USDC reserve-income estimate (off-protocol, NOT in revenue_daily) ---
-# Manual estimate, not a live feed. See logs/2026-07-24-coinbase-usdc-reserve-income-research.md,
-# logs/2026-07-24-usdc-revenue-vs-user-yield-research.md, and
-# logs/2026-08-17-aqav2-gitbook-confirmation.md for full sourcing/methodology and caveats before
-# changing these numbers. The 90% share and accrual timeline are now confirmed by the official
-# docs (hyperliquid.gitbook.io/hyperliquid-docs/hypercore/aligned-quote-assets), not just
-# secondary reporting.
+# --- AQA (Aligned Quote Asset) USDC reserve-income (off-protocol, NOT in revenue_daily) ---
+# Actual payouts are read live from the Assistance Fund ledger (fetch_aqa_payouts()); this dict
+# is the model used for forward scenarios and as the fallback when the HL API fetch fails.
+# See logs/2026-07-24-coinbase-usdc-reserve-income-research.md,
+# logs/2026-08-17-aqav2-gitbook-confirmation.md and logs/2026-10-12-aqav2-first-payout.md
+# before changing these numbers. Mechanism per the official docs
+# (hyperliquid.gitbook.io/hyperliquid-docs/hypercore/aligned-quote-assets): accrued daily at
+# 0 UTC, settled in 30-day intervals, paid to the Assistance Fund 8 days after each interval.
 USDC_ESTIMATE = {
-    "as_of": "2026-07-24",
+    "as_of": "2026-10-12",
     "float_usd": 6.176e9,         # Coinbase's own AQAv2 activation post (2026-06-08): USDC reserves
                                    # at activation, 95.06% of Hyperliquid L1 stablecoins
     "hl_share": 0.90,              # official docs: ~90% of "cost-adjusted reserve yield revenue"
                                     # remitted to the protocol (net of issuer costs, not gross)
-    "yield_low": 0.030,
-    "yield_base": 0.035,           # derived from Circle Q1'26 reserve income / avg circulating USDC
-    "yield_high": 0.040,
-    "accrual_start": "2026-08-26", # official mechanism: 30-day accrual intervals + 8-day settlement
-    "first_payment": "2026-10-03", # lag to Assistance Fund; confirmed by BlockBeats 2026-08-17
-                                    # (19/26 validator approval) matching the math exactly
+    # Calibrated to the first actual payout ($14.58M for 2026-08-26..09-25 on a $7.03B avg
+    # DefiLlama float => 2.52% net => ~2.80% gross-equivalent at 90%). Was 3.0/3.5/4.0%, which
+    # overstated the payout by ~25% on the live float. When payouts are available the Base
+    # rate is re-derived live from the latest payout (aqa_calibration()).
+    "yield_low": 0.025,
+    "yield_base": 0.028,
+    "yield_high": 0.031,
+    "accrual_start": "2026-08-26",
+    "interval_days": 30,
+    "settle_days": 8,
 }
 
 
@@ -104,7 +111,7 @@ def load_metrics(end_date: str | None = None) -> pd.DataFrame:
     try:
         df = pd.read_sql_query(
             "SELECT date, hype_price, btc_price, bnb_price, revenue_daily, "
-            "revenue_7d_avg, hype_ps_ratio, hype_market_cap "
+            "revenue_7d_avg, hype_ps_ratio, hype_ps_ratio_incl_aqa, hype_market_cap "
             "FROM daily_metrics ORDER BY date ASC",
             conn,
             parse_dates=["date"],
@@ -183,11 +190,20 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
     if df["hype_ps_ratio"].notna().any():
         fig.add_trace(go.Scatter(
             x=df["date"], y=df["hype_ps_ratio"],
-            name="HYPE P/S",
+            name="HYPE P/S (on-chain)",
             mode="lines",
             line=dict(color=color_ps, width=1.6, dash="dashdot"),
             yaxis="y4",
-            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>P/S: %{y:.1f}x<extra></extra>",
+            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>P/S on-chain: %{y:.1f}x<extra></extra>",
+        ))
+    if df["hype_ps_ratio_incl_aqa"].notna().any():
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["hype_ps_ratio_incl_aqa"],
+            name="HYPE P/S (incl. AQAv2)",
+            mode="lines",
+            line=dict(color=color_ps, width=2.2),
+            yaxis="y4",
+            hovertemplate="<b>%{x|%Y-%m-%d}</b><br>P/S incl. AQAv2: %{y:.1f}x<extra></extra>",
         ))
 
     fig.update_layout(
@@ -466,97 +482,121 @@ def render_brief(md_text: str) -> tuple[str, str]:
     return title, body_html
 
 
-def build_usdc_estimate_html(live_float_usd: float | None = None) -> str:
-    """Render the AQA (Aligned Quote Asset) USDC reserve-income estimate card.
+def aqa_calibration(payouts: list[dict] | None, float_df: pd.DataFrame) -> dict | None:
+    """Realized AQAv2 rate from the latest actual payout: payout x 365/30 divided by the
+    average DefiLlama float over that payout's accrual interval. The result is a *net* rate
+    (already after the issuer's ~10% cut and costs); `gross_equiv` divides back by hl_share
+    for comparison with the old 3.0-4.0% gross yield assumption. None if no payout yet or the
+    float series is unavailable."""
+    if not payouts or float_df.empty:
+        return None
+    last = payouts[-1]
+    mask = ((float_df["date"] >= pd.Timestamp(last["interval_start"]))
+            & (float_df["date"] < pd.Timestamp(last["interval_end"])))
+    if not mask.any():
+        return None
+    avg_float = float(float_df.loc[mask, "circulating_usd"].mean())
+    net_rate = last["annualized_usd"] / avg_float
+    return {"last": last, "avg_float": avg_float, "net_rate": net_rate,
+            "gross_equiv": net_rate / USDC_ESTIMATE["hl_share"]}
 
-    This is NOT on-chain protocol revenue and is NOT included in revenue_daily,
-    revenue_7d_avg, or hype_ps_ratio anywhere else in this dashboard/DB — it's
-    an off-chain interest-income split between Coinbase/Circle and Hyperliquid
-    (the AQA/AQAv2 program), confirmed absent from ASXN's own rev-fee-breakdown
-    taxonomy. It funds the Hyperliquid Assistance Fund's HYPE buybacks directly,
-    separately from HLP/vault yield paid to individual USDC depositors — see the
-    research log for why those are parallel, non-overlapping mechanisms.
 
-    `live_float_usd`, when provided (from fetch_usdc_float_series(), DefiLlama's daily
-    pegged-stablecoin-on-Hyperliquid-L1 series), replaces the static Coinbase-post float
-    ($6.176B as of 2026-06-08) in the yield-scenario table below, so the estimate tracks
-    the float as it actually moves instead of staying pinned to a single announcement-day
-    snapshot. The yield assumption itself is still a manual, undisclosed-rate estimate —
-    see logs/2026-07-24-coinbase-usdc-reserve-income-research.md and
-    logs/2026-07-24-usdc-revenue-vs-user-yield-research.md.
+def aqa_scenarios(float_usd: float, calib: dict | None) -> list[tuple[str, float, float]]:
+    """(label, gross-equivalent yield, annualized $) for Low/Base/High on `float_usd`.
+    Base uses the realized rate when a payout exists; Low/High are +/-0.3pp around it."""
+    e = USDC_ESTIMATE
+    base = calib["gross_equiv"] if calib else e["yield_base"]
+    if calib:
+        low, high = base - 0.003, base + 0.003
+    else:
+        low, high = e["yield_low"], e["yield_high"]
+    return [(label, y, float_usd * y * e["hl_share"])
+            for label, y in (("Low", low), ("Base", base), ("High", high))]
+
+
+def build_usdc_estimate_html(live_float_usd: float | None = None,
+                             payouts: list[dict] | None = None,
+                             calib: dict | None = None) -> str:
+    """Render the AQAv2 (Aligned Quote Asset) USDC reserve-income card: actual payouts to
+    the Assistance Fund (read live from the HL ledger via aqa.fetch_aqa_payouts()), the
+    realized rate they imply, and forward run-rate scenarios on the live float.
+
+    This income is NOT in revenue_daily / revenue_7d_avg / hype_ps_ratio (DefiLlama doesn't
+    track it); it IS in hype_ps_ratio_incl_aqa (latest payout x 365/30, see aqa.py). It funds
+    the Assistance Fund's HYPE buybacks, separate from HLP/vault yield paid to depositors.
+    See logs/2026-10-12-aqav2-first-payout.md and logs/2026-08-17-aqav2-gitbook-confirmation.md.
     """
     e = USDC_ESTIMATE
     float_usd = live_float_usd if live_float_usd is not None else e["float_usd"]
-    rows = []
-    for label, y in (("Low", e["yield_low"]), ("Base", e["yield_base"]), ("High", e["yield_high"])):
-        annual = float_usd * y * e["hl_share"]
-        monthly = annual / 12
-        daily = annual / 365.25
-        rows.append((label, y, annual, monthly, daily))
 
     def fmt_usd(v: float) -> str:
         return f"${v / 1e6:,.1f}M" if v >= 1e6 else f"${v:,.0f}"
 
-    def fmt_usd_k(v: float) -> str:
-        return f"${v / 1e3:,.1f}K"
-
-    row_html = "\n".join(
-        f'''      <tr class="{'is-base' if label == 'Base' else ''}">
-        <td>{label}</td><td>{y:.1%}</td>
-        <td>{fmt_usd(annual)}</td><td>{fmt_usd(monthly)}</td><td>{fmt_usd_k(daily)}</td>
+    if payouts is None:
+        payout_html = '<p style="color:var(--ink-3)">AQA payout fetch failed (HL API) -- see stderr.</p>'
+    elif not payouts:
+        payout_html = '<p style="color:var(--ink-3)">No AQAv2 payout to the Assistance Fund yet.</p>'
+    else:
+        payout_rows = "\n".join(
+            f'''      <tr class="{'is-base' if p is payouts[-1] else ''}">
+        <td>{p['paid_date']}</td><td>{p['interval_start']} &rarr; {p['interval_end'] - timedelta(days=1)}</td>
+        <td>{fmt_usd(p['amount_usd'])}</td><td>${p['amount_usd'] / 30 / 1e3:,.0f}K</td><td>{fmt_usd(p['annualized_usd'])}</td>
       </tr>'''
-        for label, y, annual, monthly, daily in rows
+            for p in reversed(payouts)
+        )
+        payout_html = f"""
+      <table class="estimate-table">
+        <thead><tr><th>Paid (UTC)</th><th>Accrual interval</th><th>Payout</th><th>Per day</th><th>Annualized (&times;365/30)</th></tr></thead>
+        <tbody>
+{payout_rows}
+        </tbody>
+      </table>"""
+
+    calib_html = ""
+    if calib:
+        calib_html = f"""
+      <p class="estimate-note">Realized rate (latest payout): {fmt_usd(calib['last']['annualized_usd'])}/yr
+      &divide; ${calib['avg_float']/1e9:.2f}B average float over {calib['last']['interval_start']} &rarr;
+      {calib['last']['interval_end'] - timedelta(days=1)} = <strong>{calib['net_rate']:.2%} net</strong>
+      (&asymp;{calib['gross_equiv']:.2%} gross-equivalent at {e['hl_share']:.0%} share). The earlier 3.5% gross
+      assumption overstated this by ~25% on the live float; the scenarios below are re-centered on the
+      realized rate.</p>"""
+
+    scen_rows = "\n".join(
+        f'''      <tr class="{'is-base' if label == 'Base' else ''}">
+        <td>{label}</td><td>{y:.2%}</td>
+        <td>{fmt_usd(annual)}</td><td>{fmt_usd(annual * 30 / 365)}</td><td>${annual / 365 / 1e3:,.1f}K</td>
+      </tr>'''
+        for label, y, annual in aqa_scenarios(float_usd, calib)
     )
 
     return f"""
     <div class="estimate-card">
-      <div class="estimate-flag">ESTIMATE &middot; off-protocol &middot; not in revenue_daily</div>
-      <p>Hyperliquid's <strong>AQA (Aligned Quote Asset)</strong> program, upgraded to
-      <strong>AQAv2</strong>, designates USDC as the primary margin/spot/perp asset on Hyperliquid.
-      Under it, Coinbase classifies USDC held on Hyperliquid as &quot;on-platform&quot;, collecting
-      the reserve income it generates and paying <strong>~90%</strong> of that income back to
-      Hyperliquid (Coinbase keeps the remaining ~10%, net of the issuer's own costs &mdash; the
-      official docs specify &quot;cost-adjusted reserve yield revenue&quot;). Per Coinbase's own
-      AQAv2 activation announcement (2026-06-08), USDC reserves stood at
-      <strong>${e['float_usd']/1e9:.2f}B</strong> when the float was classified &quot;on-platform&quot;
-      &mdash; &asymp;8% of USDC's global circulating supply at the time, and 95.06% of Hyperliquid
-      L1's own stablecoin base. The chart above tracks this float live via DefiLlama
-      (pegged-stablecoin supply on &quot;Hyperliquid L1&quot;, USDC is ~95%+ of it) &mdash;
-      <strong>${float_usd/1e9:.2f}B</strong> as of the latest data point below, a reasonable
-      cross-check against Coinbase's own figure two months on. The scenario table uses this
-      live number, not the frozen June figure. Validator-approved protocol-level accrual begins
-      <strong>{e['accrual_start']}</strong> (30-day accrual intervals, paid 8 days after each interval
-      closes), with the first Assistance Fund payment expected <strong>{e['first_payment']}</strong>.
-      A future network upgrade will make AQAv2 <strong>mandatory</strong> for quote assets on HIP-4
-      and validator-operated perp markets, extending this beyond USDC/Coinbase. This income is
-      routed to the <strong>Hyperliquid Assistance Fund</strong>, which executes open-market
-      <strong>$HYPE buybacks</strong> &mdash; it is separate from, and additive to, tracked protocol
-      fee revenue. No live feed exists for this &mdash; this is a manual, clearly-bounded estimate,
-      not a tracked metric.</p>
+      <div class="estimate-flag">ACTUAL PAYOUTS &middot; HL ledger &middot; not in revenue_daily, included in P/S incl. AQAv2</div>
+      <p>Hyperliquid's <strong>AQAv2 (Aligned Quote Asset)</strong> program: Coinbase/Circle remit
+      <strong>~{e['hl_share']:.0%}</strong> of the cost-adjusted reserve yield on USDC held on Hyperliquid
+      to the protocol. Per the official docs it is <strong>accrued daily at 0 UTC</strong>, settled in
+      <strong>{e['interval_days']}-day intervals</strong> (from {e['accrual_start']}), and paid to the
+      <strong>Assistance Fund</strong> {e['settle_days']} days after each interval closes &mdash; so it lands
+      on-chain as one lump per month, as a system send of USDC from
+      <span class="mono">0x5000&hellip;0000</span> to the Assistance Fund
+      (<span class="mono">0xfefe&hellip;fefe</span>), which funds open-market <strong>$HYPE buybacks</strong>.
+      DefiLlama does not count it, so it is absent from <span class="mono">revenue_daily</span>; the
+      headline P/S adds the latest payout annualized (&times;365/30) on top of on-chain revenue.</p>
+{payout_html}
+{calib_html}
       <table class="estimate-table">
-        <thead><tr><th>Scenario</th><th>Yield</th><th>Annualized</th><th>Monthly</th><th>Daily</th></tr></thead>
+        <thead><tr><th>Run-rate scenario</th><th>Gross-equiv. yield</th><th>Annualized</th><th>Per 30-day payout</th><th>Daily</th></tr></thead>
         <tbody>
-{row_html}
+{scen_rows}
         </tbody>
       </table>
-      <p class="estimate-note">Yield assumption (3.0&ndash;4.0%, base 3.5%) is derived, not disclosed:
-      Circle's own Q1'26 reserve income ($653M) &divide; ~$76.15B average circulating USDC
-      &asymp; 3.4% annualized, used as a proxy for this float's yield &mdash; roughly consistent
-      with the Fed funds target range at the time (3.50&ndash;3.75%), and likely a slight
-      overstatement since the official 90% share applies to yield net of issuer costs, not gross.
-      The 90% share and accrual mechanics are now confirmed by Hyperliquid's own docs
-      (hyperliquid.gitbook.io/hyperliquid-docs/hypercore/aligned-quote-assets), corroborated by
-      19/26 validator approval and a $4.4B Circle&rarr;Coinbase USDC restaging on HyperEVM reported
-      2026-08-17 &mdash; stronger footing than the secondary-outlet-only framing (CoinDesk,
-      CryptoBriefing, Bankless, Coinbase's activation post) this estimate started from. The prior
-      Jun 8 vs. Aug 26 accrual-date disagreement is resolved: Jun 8 was Coinbase's own
-      &quot;on-platform&quot; classification date (float existed, no protocol-level accrual yet);
-      {e['accrual_start']} is when validator-approved AQAv2 accrual actually begins, with first
-      Assistance Fund payment {e['first_payment']} &mdash; math confirmed by the docs' own 30-day
-      accrual + 8-day settlement mechanism. Confirmed via ASXN's own compiled JS that this income
-      has no path into Hyperliquid's on-chain fee revenue at all. Float is live (DefiLlama,
-      refreshed on every dashboard build); Coinbase's own ${e['float_usd']/1e9:.2f}B figure is as
-      of {e['as_of']}; mechanism/dates as of 2026-08-17.</p>
+      <p class="estimate-note">Scenarios apply to the live float (${float_usd/1e9:.2f}B, DefiLlama pegged-stablecoin
+      supply on Hyperliquid L1, USDC ~95%+ of it, chart above) and estimate the <em>next</em> payout; the P/S
+      itself uses the last actual payout, not a scenario. Because the float includes ~5% non-USDC stablecoins,
+      the realized rate per USDC is slightly higher than shown. Mechanism confirmed by
+      hyperliquid.gitbook.io/hyperliquid-docs/hypercore/aligned-quote-assets; first payout matched the
+      documented Aug 26 + 30d + 8d schedule.</p>
     </div>
 """
 
@@ -586,7 +626,7 @@ def latest_ps_inputs() -> dict:
     }
 
 
-def build_ps_explorer_html(live_float_usd: float | None = None) -> str:
+def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | None = None) -> str:
     """Render the interactive $HYPE P/S explorer: protocol revenue, AQAv2 revenue,
     and price as independently-draggable parameters, with P/S computed live in-browser.
 
@@ -598,17 +638,19 @@ def build_ps_explorer_html(live_float_usd: float | None = None) -> str:
     conflating it with the AQA/price surface — same "decouple the axes" principle CRCL
     used for its yield slider.
 
-    `live_float_usd`, when provided, seeds the AQA Low/Base/High preset buttons off the
-    live DefiLlama float (see fetch_usdc_float_series()) instead of the static Coinbase
-    figure in USDC_ESTIMATE. See build_usdc_estimate_html() docstring and
-    logs/2026-08-17-aqav2-gitbook-confirmation.md for sourcing.
+    The AQA slider defaults to the latest actual payout annualized (same figure the headline
+    "P/S incl. AQAv2" uses) when `calib` is available; Low/Base/High presets are the run-rate
+    scenarios from aqa_scenarios() on the live DefiLlama float. See
+    build_usdc_estimate_html() and logs/2026-10-12-aqav2-first-payout.md.
     """
     inputs = latest_ps_inputs()
     e = USDC_ESTIMATE
     float_usd = live_float_usd if live_float_usd is not None else e["float_usd"]
-    aqa_low = float_usd * e["yield_low"] * e["hl_share"]
-    aqa_base = float_usd * e["yield_base"] * e["hl_share"]
-    aqa_high = float_usd * e["yield_high"] * e["hl_share"]
+    (_, y_low, aqa_low), (_, y_base, aqa_base), (_, y_high, aqa_high) = aqa_scenarios(float_usd, calib)
+    aqa_actual = calib["last"]["annualized_usd"] if calib else None
+    aqa_default = aqa_actual if aqa_actual is not None else aqa_base
+    actual_btn = (f'<button type="button" class="mini-btn" data-aqa="{aqa_actual/1e6:.1f}">实际(最近一期)</button>\n            '
+                  if aqa_actual is not None else "")
 
     as_of_note = f"as of {inputs['as_of']}" if inputs["as_of"] else "no DB rows found, using fallback defaults"
 
@@ -622,8 +664,8 @@ def build_ps_explorer_html(live_float_usd: float | None = None) -> str:
       <span class="mono">market cap &divide; annualized revenue</span>, where market cap uses the
       circulating supply {as_of_note} ({inputs['circ_supply']/1e6:,.1f}M HYPE) &times; the price
       you set. AQAv2 revenue is never in DefiLlama's tracked <span class="mono">revenue_daily</span>
-      &mdash; this tool exists to show what P/S looks like if you count it anyway. See
-      logs/2026-08-17-aqav2-gitbook-confirmation.md for the AQA mechanism/sourcing.</p>
+      but it is real cash paid to the Assistance Fund monthly; the AQA slider defaults to the
+      latest actual payout &times; 365/30, the same figure behind the headline P/S incl. AQAv2.</p>
 
       <div class="ctrl-grid">
         <div class="ctrl-group">
@@ -634,10 +676,10 @@ def build_ps_explorer_html(live_float_usd: float | None = None) -> str:
             <button type="button" class="mini-btn" data-protocol="{inputs['protocol_rev_30d']/1e6:.1f}">30D avg&times;365</button></div>
         </div>
         <div class="ctrl-group">
-          <label>AQAv2 Revenue (annualized) <span class="val" id="pse-aqa-val">$195M</span></label>
-          <input type="range" id="pse-aqa" min="0" max="300" step="1" value="{aqa_base/1e6:.0f}">
-          <div class="ctrl-sub">直接输入: $<input type="number" id="pse-aqa-num" min="0" max="300" step="1" value="{aqa_base/1e6:.0f}">M
-            &middot; <button type="button" class="mini-btn" data-aqa="{aqa_low/1e6:.1f}">Low</button>
+          <label>AQAv2 Revenue (annualized) <span class="val" id="pse-aqa-val">${aqa_default/1e6:.0f}M</span></label>
+          <input type="range" id="pse-aqa" min="0" max="300" step="1" value="{aqa_default/1e6:.0f}">
+          <div class="ctrl-sub">直接输入: $<input type="number" id="pse-aqa-num" min="0" max="300" step="1" value="{aqa_default/1e6:.0f}">M
+            &middot; {actual_btn}<button type="button" class="mini-btn" data-aqa="{aqa_low/1e6:.1f}">Low</button>
             <button type="button" class="mini-btn" data-aqa="{aqa_base/1e6:.1f}">Base</button>
             <button type="button" class="mini-btn" data-aqa="{aqa_high/1e6:.1f}">High</button>
             <button type="button" class="mini-btn" data-aqa="0">Off</button></div>
@@ -666,7 +708,7 @@ def build_ps_explorer_html(live_float_usd: float | None = None) -> str:
         <div class="hm-legend"><span>P/S &le;15x(便宜)</span><span class="bar bar-ps"></span><span>P/S &ge;45x(贵)</span></div>
       </div>
       <p class="estimate-note">热力图: X轴 = HYPE价格, Y轴 = AQAv2年化收入, 颜色 = P/S(链上协议收入滑块的当前值 + 该格AQA收入); 十字标记 = 当前价格/AQA滑块读数, 可直接拖动定位。
-      流通量、7D/30D协议收入基准 {as_of_note}; AQAv2 Low/Base/High = 实时USDC浮存量 ${float_usd/1e9:.3f}B(DefiLlama) &times; 3.0/3.5/4.0% yield &times; {e['hl_share']:.0%} share。
+      流通量、7D/30D协议收入基准 {as_of_note}; AQAv2 默认值 = 最近一期实际到账 &times; 365/30; Low/Base/High = 实时USDC浮存量 ${float_usd/1e9:.3f}B(DefiLlama) &times; {y_low:.2%}/{y_base:.2%}/{y_high:.2%} 毛收益率 &times; {e['hl_share']:.0%} share(Base按实际到账校准)。
       纯粹是交互式估算工具, 不写入任何数据库字段。</p>
     </div>
     <script>
@@ -1079,7 +1121,7 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
   <section class="section">
     <div class="section-head">
       <span class="section-num">03</span>
-      <h2 class="section-title">USDC Reserve-Income Estimate (AQA / AQAv2)</h2>
+      <h2 class="section-title">USDC Reserve Income (AQA / AQAv2) &mdash; Actual Payouts &amp; Run-Rate</h2>
     </div>
     <div class="chart-card" style="margin-bottom:18px;">
       <div class="card-title">USDC (+other pegged stablecoins) circulating on Hyperliquid L1 &middot; DefiLlama, daily</div>
@@ -1125,8 +1167,10 @@ def main(argv: list[str]) -> int:
     usdc_float_df = fetch_usdc_float_series()
     live_float_usd = float(usdc_float_df["circulating_usd"].iloc[-1]) if not usdc_float_df.empty else None
     usdc_float_chart_html = build_usdc_float_chart_html(usdc_float_df)
-    usdc_estimate_html = build_usdc_estimate_html(live_float_usd)
-    ps_explorer_html = build_ps_explorer_html(live_float_usd)
+    aqa_payouts = fetch_aqa_payouts()
+    calib = aqa_calibration(aqa_payouts, usdc_float_df)
+    usdc_estimate_html = build_usdc_estimate_html(live_float_usd, aqa_payouts, calib)
+    ps_explorer_html = build_ps_explorer_html(live_float_usd, calib)
 
     hype_stats = fetch_coin_market_stats(COINGECKO_COIN_IDS["hype"])
     bnb_stats = fetch_coin_market_stats(COINGECKO_COIN_IDS["bnb"])
