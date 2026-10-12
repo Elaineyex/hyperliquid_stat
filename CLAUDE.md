@@ -29,6 +29,7 @@ The revenue breakdown (`generate_revenue_breakdown.py`) is **separate** and run 
 | `db.py` | SQLite helper — schema creation and upsert logic for `daily_metrics` |
 | `hyperliquid_stats.db` | SQLite database (2024-12-23 to present, 550+ rows). Gitignored as of 2026-08-17 — local-only, not versioned. Was committed before that; still in git history on commits up to `2c1b139` |
 | `backfill_since_tge.py` | Backfills DB from token-generation event forward |
+| `backfill_pre_cg_window.py` | Fills HYPE market cap for 2024-12-23..2025-06-15 (before CoinGecko's free-tier 365-day window) using DefiLlama prices. Run after `backfill_since_tge.py` when rebuilding the DB |
 | `backfill_bnb.py` | One-off script — backfills `bnb_price` on existing `daily_metrics` rows from Hyperliquid candle history. Not part of the daily cron; run manually if re-backfilling. |
 | `requirements.txt` | Python deps — install in `.venv` via `pip install -r requirements.txt` |
 | `AUTOMATION.md` | launchd setup docs (in Chinese). Cron runs at 12:00 local = 04:00 UTC |
