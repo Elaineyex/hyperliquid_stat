@@ -214,7 +214,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
             color=ink, size=12,
         ),
-        margin=dict(l=80, r=220, t=140, b=70),
+        margin=dict(l=80, r=90, t=140, b=70),
         height=620,
         legend=dict(
             orientation="h", yanchor="bottom", y=1.03,
@@ -228,7 +228,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             font=dict(family="'IBM Plex Mono', monospace", size=11, color=ink),
         ),
         xaxis=dict(
-            domain=[0.0, 0.82],
+            domain=[0.0, 0.70],
             range=[
                 (df["date"].max() - pd.Timedelta(days=180)).isoformat(),
                 df["date"].max().isoformat(),
@@ -279,7 +279,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             title=dict(text="BTC Price",
                        font=dict(color=color_btc, size=12)),
             tickprefix="$", tickformat=".2s",
-            overlaying="y", side="right", anchor="free", position=0.90,
+            overlaying="y", side="right", anchor="free", position=0.80,
             tickfont=dict(family="'IBM Plex Mono', monospace",
                           size=11, color=color_btc),
             showgrid=False, zeroline=False,
@@ -288,7 +288,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             title=dict(text="HYPE P/S",
                        font=dict(color=color_ps, size=12)),
             ticksuffix="x", tickformat=".0f",
-            overlaying="y", side="right", anchor="free", position=0.95,
+            overlaying="y", side="right", anchor="free", position=0.90,
             tickfont=dict(family="'IBM Plex Mono', monospace",
                           size=11, color=color_ps),
             showgrid=False, zeroline=False,
