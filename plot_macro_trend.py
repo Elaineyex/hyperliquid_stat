@@ -112,7 +112,14 @@ def fetch_hype_market_chart(days=220):
         "days": str(days),
         "interval": "daily",
     }
-    data = fetch_json_with_retries(COINGECKO_MARKET_CHART_URL, params=params)
+    try:
+        data = fetch_json_with_retries(COINGECKO_MARKET_CHART_URL, params=params)
+    except Exception as e:
+        if not cache_path.exists():
+            raise
+        print(f"CoinGecko market chart fetch failed, using stale cache: {e}")
+        with open(cache_path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
     with open(cache_path, "w", encoding="utf-8") as handle:
         json.dump(data, handle)
     return data
@@ -652,8 +659,8 @@ if __name__ == "__main__":
         try:
             market_cap_df = get_hype_market_chart_history()
         except Exception as e:
-            print(f"Failed to fetch HYPE market cap history from CoinGecko: {e}")
-            sys.exit(1)
+            print(f"Failed to fetch HYPE market cap history from CoinGecko, plotting without P/S line: {e}")
+            market_cap_df = None
 
         plot_combined_data(hype_df, btc_df, rev_df, market_cap_df, aqa_payouts)
     else:
