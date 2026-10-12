@@ -5,6 +5,7 @@ an interactive 6M macro-trend chart sourced from the local sqlite DB.
 """
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
 import sys
@@ -414,12 +415,12 @@ def build_usdc_float_chart_html(df: pd.DataFrame) -> str:
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=df["date"], y=df["circulating_usd"],
+        x=df["date"], y=df["circulating_usd"] / 1e9,
         name="USDC (+other pegged) circulating",
         mode="lines",
         line=dict(color=color_float, width=2.2),
         fill="tozeroy", fillcolor="rgba(26,79,168,0.08)",
-        hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Float: $%{y:,.0f}<extra></extra>",
+        hovertemplate="<b>%{x|%Y-%m-%d}</b><br>Float: $%{y:.2f}B<extra></extra>",
     ))
     fig.update_layout(
         template="plotly_white",
@@ -453,7 +454,7 @@ def build_usdc_float_chart_html(df: pd.DataFrame) -> str:
             tickfont=dict(family="'IBM Plex Mono', monospace", size=10, color=ink_3),
         ),
         yaxis=dict(
-            tickprefix="$", tickformat=".2s",
+            tickprefix="$", ticksuffix="B", tickformat=".1f",
             gridcolor=grid, zeroline=False,
             tickfont=dict(family="'IBM Plex Mono', monospace", size=10, color=ink_3),
         ),
@@ -652,6 +653,9 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
     actual_btn = (f'<button type="button" class="mini-btn" data-aqa="{aqa_actual/1e6:.1f}">Actual (latest)</button>\n            '
                   if aqa_actual is not None else "")
 
+    # Slider ceiling scales with the data so the 7D/30D presets never get clamped.
+    prot_max = max(1500, math.ceil(max(inputs["protocol_rev_7d"], inputs["protocol_rev_30d"]) * 1.5 / 1e8) * 100)
+
     as_of_note = f"as of {inputs['as_of']}" if inputs["as_of"] else "no DB rows found, using fallback defaults"
 
     return f"""
@@ -670,8 +674,8 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
       <div class="ctrl-grid">
         <div class="ctrl-group">
           <label>Hyperliquid Protocol Revenue (annualized) <span class="val" id="pse-protocol-val">$328M</span></label>
-          <input type="range" id="pse-protocol" min="100" max="700" step="1" value="{inputs['protocol_rev_7d']/1e6:.0f}">
-          <div class="ctrl-sub">Enter: $<input type="number" id="pse-protocol-num" min="100" max="700" step="1" value="{inputs['protocol_rev_7d']/1e6:.0f}">M
+          <input type="range" id="pse-protocol" min="100" max="{prot_max}" step="1" value="{inputs['protocol_rev_7d']/1e6:.0f}">
+          <div class="ctrl-sub">Enter: $<input type="number" id="pse-protocol-num" min="100" max="{prot_max}" step="1" value="{inputs['protocol_rev_7d']/1e6:.0f}">M
             &middot; <button type="button" class="mini-btn" data-protocol="{inputs['protocol_rev_7d']/1e6:.1f}">7D avg&times;365</button>
             <button type="button" class="mini-btn" data-protocol="{inputs['protocol_rev_30d']/1e6:.1f}">30D avg&times;365</button></div>
         </div>
@@ -714,6 +718,7 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
     <script>
     (function(){{
       var CIRC = {inputs['circ_supply']!r};  // circulating HYPE supply, {as_of_note}
+      var PROT_MIN = 100, PROT_MAX = {prot_max};
       var PRICE_MIN = 20, PRICE_MAX = 150, PRICE_STEP = 5;
       var AQA_MIN = 0, AQA_MAX = 300, AQA_STEP = 15;
       var PS_LOW = 15, PS_MID = 30, PS_HIGH = 45;
@@ -746,15 +751,15 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
         price: parseFloat(priceSlider.value)
       }};
 
-      protocolSlider.addEventListener('input', function(){{ state.protocol = clamp(parseFloat(protocolSlider.value), 100, 700); protocolNum.value = state.protocol.toFixed(0); render(); }});
-      protocolNum.addEventListener('input', function(){{ if(protocolNum.value==='') return; state.protocol = clamp(parseFloat(protocolNum.value), 100, 700); protocolSlider.value = state.protocol; render(); }});
+      protocolSlider.addEventListener('input', function(){{ state.protocol = clamp(parseFloat(protocolSlider.value), PROT_MIN, PROT_MAX); protocolNum.value = state.protocol.toFixed(0); render(); }});
+      protocolNum.addEventListener('input', function(){{ if(protocolNum.value==='') return; state.protocol = clamp(parseFloat(protocolNum.value), PROT_MIN, PROT_MAX); protocolSlider.value = state.protocol; render(); }});
       aqaSlider.addEventListener('input', function(){{ state.aqa = clamp(parseFloat(aqaSlider.value), AQA_MIN, AQA_MAX); aqaNum.value = state.aqa.toFixed(0); render(); }});
       aqaNum.addEventListener('input', function(){{ if(aqaNum.value==='') return; state.aqa = clamp(parseFloat(aqaNum.value), AQA_MIN, AQA_MAX); aqaSlider.value = state.aqa; render(); }});
       priceSlider.addEventListener('input', function(){{ state.price = clamp(parseFloat(priceSlider.value), PRICE_MIN, PRICE_MAX); priceNum.value = state.price.toFixed(2); render(); }});
       priceNum.addEventListener('input', function(){{ if(priceNum.value==='') return; state.price = clamp(parseFloat(priceNum.value), PRICE_MIN, PRICE_MAX); priceSlider.value = state.price; render(); }});
 
       document.querySelectorAll('.mini-btn[data-protocol]').forEach(function(btn){{
-        btn.addEventListener('click', function(){{ state.protocol = parseFloat(btn.getAttribute('data-protocol')); protocolSlider.value = clamp(state.protocol,100,700); protocolNum.value = state.protocol.toFixed(1); render(); }});
+        btn.addEventListener('click', function(){{ state.protocol = parseFloat(btn.getAttribute('data-protocol')); protocolSlider.value = clamp(state.protocol, PROT_MIN, PROT_MAX); protocolNum.value = state.protocol.toFixed(1); render(); }});
       }});
       document.querySelectorAll('.mini-btn[data-aqa]').forEach(function(btn){{
         btn.addEventListener('click', function(){{ state.aqa = parseFloat(btn.getAttribute('data-aqa')); aqaSlider.value = clamp(state.aqa,AQA_MIN,AQA_MAX); aqaNum.value = state.aqa.toFixed(1); render(); }});
