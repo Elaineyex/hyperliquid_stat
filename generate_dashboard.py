@@ -214,10 +214,10 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
             family="'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif",
             color=ink, size=12,
         ),
-        margin=dict(l=80, r=220, t=70, b=70),
-        height=560,
+        margin=dict(l=80, r=220, t=140, b=70),
+        height=620,
         legend=dict(
-            orientation="h", yanchor="bottom", y=1.06,
+            orientation="h", yanchor="bottom", y=1.03,
             xanchor="left", x=0,
             bgcolor="rgba(0,0,0,0)", bordercolor="rgba(0,0,0,0)",
             font=dict(size=11, color=ink_3),
@@ -252,7 +252,7 @@ def build_interactive_chart(df: pd.DataFrame) -> str:
                 bordercolor="#D8D5CA", borderwidth=1,
                 font=dict(color=ink, size=11,
                           family="'IBM Plex Mono', monospace"),
-                x=0, y=1.18, xanchor="left", yanchor="top",
+                x=0, y=1.2, xanchor="left", yanchor="bottom",
             ),
             gridcolor=grid,
             linecolor="#D8D5CA", showline=True, mirror=False,
@@ -649,7 +649,7 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
     (_, y_low, aqa_low), (_, y_base, aqa_base), (_, y_high, aqa_high) = aqa_scenarios(float_usd, calib)
     aqa_actual = calib["last"]["annualized_usd"] if calib else None
     aqa_default = aqa_actual if aqa_actual is not None else aqa_base
-    actual_btn = (f'<button type="button" class="mini-btn" data-aqa="{aqa_actual/1e6:.1f}">实际(最近一期)</button>\n            '
+    actual_btn = (f'<button type="button" class="mini-btn" data-aqa="{aqa_actual/1e6:.1f}">Actual (latest)</button>\n            '
                   if aqa_actual is not None else "")
 
     as_of_note = f"as of {inputs['as_of']}" if inputs["as_of"] else "no DB rows found, using fallback defaults"
@@ -671,14 +671,14 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
         <div class="ctrl-group">
           <label>Hyperliquid Protocol Revenue (annualized) <span class="val" id="pse-protocol-val">$328M</span></label>
           <input type="range" id="pse-protocol" min="100" max="700" step="1" value="{inputs['protocol_rev_7d']/1e6:.0f}">
-          <div class="ctrl-sub">直接输入: $<input type="number" id="pse-protocol-num" min="100" max="700" step="1" value="{inputs['protocol_rev_7d']/1e6:.0f}">M
+          <div class="ctrl-sub">Enter: $<input type="number" id="pse-protocol-num" min="100" max="700" step="1" value="{inputs['protocol_rev_7d']/1e6:.0f}">M
             &middot; <button type="button" class="mini-btn" data-protocol="{inputs['protocol_rev_7d']/1e6:.1f}">7D avg&times;365</button>
             <button type="button" class="mini-btn" data-protocol="{inputs['protocol_rev_30d']/1e6:.1f}">30D avg&times;365</button></div>
         </div>
         <div class="ctrl-group">
           <label>AQAv2 Revenue (annualized) <span class="val" id="pse-aqa-val">${aqa_default/1e6:.0f}M</span></label>
           <input type="range" id="pse-aqa" min="0" max="300" step="1" value="{aqa_default/1e6:.0f}">
-          <div class="ctrl-sub">直接输入: $<input type="number" id="pse-aqa-num" min="0" max="300" step="1" value="{aqa_default/1e6:.0f}">M
+          <div class="ctrl-sub">Enter: $<input type="number" id="pse-aqa-num" min="0" max="300" step="1" value="{aqa_default/1e6:.0f}">M
             &middot; {actual_btn}<button type="button" class="mini-btn" data-aqa="{aqa_low/1e6:.1f}">Low</button>
             <button type="button" class="mini-btn" data-aqa="{aqa_base/1e6:.1f}">Base</button>
             <button type="button" class="mini-btn" data-aqa="{aqa_high/1e6:.1f}">High</button>
@@ -687,7 +687,7 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
         <div class="ctrl-group">
           <label>HYPE Price <span class="val" id="pse-price-val">${inputs['price']:.2f}</span></label>
           <input type="range" id="pse-price" min="20" max="150" step="0.5" value="{inputs['price']:.2f}">
-          <div class="ctrl-sub">直接输入: $<input type="number" id="pse-price-num" min="20" max="150" step="0.5" value="{inputs['price']:.2f}">
+          <div class="ctrl-sub">Enter: $<input type="number" id="pse-price-num" min="20" max="150" step="0.5" value="{inputs['price']:.2f}">
             &middot; <button type="button" class="mini-btn" data-price="40">$40</button>
             <button type="button" class="mini-btn" data-price="50">$50</button>
             <button type="button" class="mini-btn" data-price="60">$60</button>
@@ -697,19 +697,19 @@ def build_ps_explorer_html(live_float_usd: float | None = None, calib: dict | No
       </div>
 
       <div class="readout-grid">
-        <div class="readout-card"><div class="lbl">市值</div><div class="val" id="pse-out-mcap">&mdash;</div></div>
-        <div class="readout-card"><div class="lbl">合计年化收入</div><div class="val" id="pse-out-rev">&mdash;</div></div>
-        <div class="readout-card"><div class="lbl">P/S(仅链上)</div><div class="val" id="pse-out-ps-base">&mdash;</div></div>
-        <div class="readout-card hero"><div class="lbl">P/S(链上+AQA)</div><div class="val" id="pse-out-ps-combined">&mdash;</div></div>
+        <div class="readout-card"><div class="lbl">Market Cap</div><div class="val" id="pse-out-mcap">&mdash;</div></div>
+        <div class="readout-card"><div class="lbl">Total Annualized Revenue</div><div class="val" id="pse-out-rev">&mdash;</div></div>
+        <div class="readout-card"><div class="lbl">P/S (on-chain only)</div><div class="val" id="pse-out-ps-base">&mdash;</div></div>
+        <div class="readout-card hero"><div class="lbl">P/S (on-chain + AQA)</div><div class="val" id="pse-out-ps-combined">&mdash;</div></div>
       </div>
 
       <div class="heatmap-wrap">
         <svg id="pse-heatmap" width="720" height="360" viewBox="0 0 720 360"></svg>
-        <div class="hm-legend"><span>P/S &le;15x(便宜)</span><span class="bar bar-ps"></span><span>P/S &ge;45x(贵)</span></div>
+        <div class="hm-legend"><span>P/S &le;15x (cheap)</span><span class="bar bar-ps"></span><span>P/S &ge;45x (expensive)</span></div>
       </div>
-      <p class="estimate-note">热力图: X轴 = HYPE价格, Y轴 = AQAv2年化收入, 颜色 = P/S(链上协议收入滑块的当前值 + 该格AQA收入); 十字标记 = 当前价格/AQA滑块读数, 可直接拖动定位。
-      流通量、7D/30D协议收入基准 {as_of_note}; AQAv2 默认值 = 最近一期实际到账 &times; 365/30; Low/Base/High = 实时USDC浮存量 ${float_usd/1e9:.3f}B(DefiLlama) &times; {y_low:.2%}/{y_base:.2%}/{y_high:.2%} 毛收益率 &times; {e['hl_share']:.0%} share(Base按实际到账校准)。
-      纯粹是交互式估算工具, 不写入任何数据库字段。</p>
+      <p class="estimate-note">Heatmap: X axis = HYPE price, Y axis = AQAv2 annualized revenue, color = P/S (current protocol-revenue slider value + that cell's AQA revenue); the crosshair marks the current price/AQA slider values and can be dragged directly.
+      Circulating supply and 7D/30D protocol-revenue baselines {as_of_note}; AQAv2 default = latest actual payout &times; 365/30; Low/Base/High = live USDC float ${float_usd/1e9:.3f}B (DefiLlama) &times; {y_low:.2%}/{y_base:.2%}/{y_high:.2%} gross yield &times; {e['hl_share']:.0%} share (Base calibrated to actual payouts).
+      Purely an interactive estimation tool; nothing here is written to the database.</p>
     </div>
     <script>
     (function(){{
