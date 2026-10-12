@@ -1065,8 +1065,7 @@ body { background: var(--bg); color: var(--ink); font-family: var(--font-body);
 def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
                row_count: int, usdc_float_chart_html: str, usdc_estimate_html: str,
                ps_explorer_html: str, fdv_stats_html: str) -> str:
-    now_beijing = datetime.now(timezone(timedelta(hours=8)))
-    generated = now_beijing.strftime("%Y-%m-%d %H:%M")
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     safe_title = title or "Hyperliquid Dashboard"
 
     return f"""<!doctype html>
@@ -1090,8 +1089,8 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
     <div class="report-meta">
       <span>Source <strong>{brief_path.name}</strong></span>
       <span>Series <strong>{row_count} daily rows</strong></span>
-      <span>Generated <strong>{generated} CST</strong></span>
-      <span>Cadence <strong>12:00 Beijing</strong></span>
+      <span>Generated <strong>{generated} UTC</strong></span>
+      <span>Cadence <strong>04:00 UTC</strong></span>
     </div>
   </header>
 
@@ -1140,7 +1139,7 @@ def build_html(title: str, body_html: str, chart_html: str, brief_path: Path,
   </section>
 
   <footer class="report-footer">
-    <span class="footer-note">Auto-refreshed daily at 12:00 Beijing time.</span>
+    <span class="footer-note">Auto-refreshed daily at 04:00 UTC.</span>
     <span class="footer-note">Data analysis only, not financial advice.</span>
   </footer>
 </div>

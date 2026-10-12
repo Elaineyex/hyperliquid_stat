@@ -12,6 +12,7 @@ of on-chain revenue for the "incl. AQA" P/S.
 from __future__ import annotations
 
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 
 import requests
@@ -27,6 +28,18 @@ AQA_SETTLE_DAYS = 8
 _SCAN_START = datetime(2026, 9, 25, tzinfo=timezone.utc)
 
 
+def _post_with_retries(payload: dict, attempts: int = 4):
+    for i in range(attempts):
+        try:
+            resp = requests.post(HL_INFO_URL, json=payload, timeout=20)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            if i == attempts - 1:
+                raise
+            time.sleep(2 * (i + 1))
+
+
 def fetch_aqa_payouts() -> list[dict] | None:
     """Return AQAv2 payouts to the Assistance Fund, oldest first, or None if the fetch failed.
 
@@ -39,13 +52,11 @@ def fetch_aqa_payouts() -> list[dict] | None:
     entries = []
     try:
         for _ in range(100):  # the endpoint pages by count; walk forward until exhausted
-            resp = requests.post(HL_INFO_URL, json={
+            page = _post_with_retries({
                 "type": "userNonFundingLedgerUpdates",
                 "user": ASSISTANCE_FUND_ADDR,
                 "startTime": start_ms,
-            }, timeout=20)
-            resp.raise_for_status()
-            page = resp.json()
+            })
             new = [x for x in page if (x["time"], x["hash"], str(x["delta"])) not in seen]
             if not new:
                 break

@@ -123,7 +123,8 @@ def fetch_market_cap(start: datetime, end: datetime) -> pd.DataFrame:
             continue
         mcap = mcaps[dt]
         rows.append({
-            "date": dt,
+            # CG's 00:00 UTC point is the snapshot at the end of the previous UTC day
+            "date": dt - pd.Timedelta(days=1),
             "cg_hype_price": price,
             "hype_market_cap": mcap,
             "hype_circulating_supply": mcap / price,
@@ -169,6 +170,9 @@ def build(hype: pd.DataFrame, btc: pd.DataFrame, rev: pd.DataFrame,
         df["hype_total_supply"] = total_supply
         if "hype_circulating_supply" in df.columns:
             df["hype_circulating_pct"] = (df["hype_circulating_supply"] / total_supply) * 100
+    if "hype_circulating_supply" in df.columns:
+        # Market cap at the UTC day close, consistent with plot_macro_trend.py's daily rows
+        df["hype_market_cap"] = df["hype_circulating_supply"] * df["HYPE_price"]
     if "hype_market_cap" in df.columns:
         df["hype_ps_ratio"] = df["hype_market_cap"] / (df["revenue_7d_avg"] * 365)
     return df

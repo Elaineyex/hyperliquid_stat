@@ -6,7 +6,7 @@ This file tells AI assistants how to work in this repo. Read it fully before tou
 
 ## What This Project Does
 
-Daily analytics pipeline for the Hyperliquid protocol. Every day at **12:00 Beijing time (04:00 UTC)** a cron job runs and produces:
+Daily analytics pipeline for the Hyperliquid protocol. Every day at **04:00 UTC (12:00 Beijing)** a cron job runs and produces:
 
 1. `logs/YYYY-MM-DD.md` — the `$HYPE` morning brief (price, revenue, valuation, market commentary)
 2. `hyperliquid_6m_macro_trend.png` — 6-month macro trend chart (overwritten each run)
@@ -61,6 +61,8 @@ aqa_revenue_annualized, hype_ps_ratio_incl_aqa
 
 **P/S columns**: `hype_ps_ratio` = market cap ÷ (`revenue_7d_avg` × 365), on-chain only. `hype_ps_ratio_incl_aqa` = market cap ÷ (`revenue_7d_avg` × 365 + `aqa_revenue_annualized`) — the headline P/S. `aqa_revenue_annualized` = latest AQAv2 payout to the Assistance Fund paid on/before that date × 365/30 (0 before the first payout on 2026-10-04; `hype_ps_ratio_incl_aqa` is NULL on those rows so the line starts at the first payout). See `aqa.py`.
 
+**Day convention (UTC)**: each row is one UTC day D. `hype_price`/`btc_price`/`bnb_price` and the 1d/7d/30d changes use Hyperliquid 1d-candle **closes** for D (never a live snapshot at cron run time). `hype_circulating_supply` is CoinGecko's 00:00 UTC point on D+1 (= close of D); `hype_market_cap` = that supply × HYPE close. Realigned for all rows on 2026-10-12 (backup `hyperliquid_stats.db.bak-20261012-pre-utc`).
+
 **Revenue column semantics**: `revenue_daily` is DefiLlama `dailyRevenue` for all Hyperliquid sources minus a small Spectra V2 adjustment. It is **net protocol revenue** as reported by DefiLlama, not gross trading volume.
 
 To query: `sqlite3 hyperliquid_stats.db "SELECT date, revenue_daily FROM daily_metrics ORDER BY date DESC LIMIT 10"`
@@ -104,7 +106,7 @@ See the `revenue-breakdown` skill (`.claude/skills/revenue-breakdown/SKILL.md`) 
 ## Cron / Automation
 
 - **Trigger**: macOS launchd, plist at `~/Library/LaunchAgents/com.hyperliquid.dailyreport.plist`
-- **Time**: 12:00 local (Beijing) = 04:00 UTC
+- **Time**: 04:00 UTC (= 12:00 local Beijing time on the host Mac). Dashboard timestamps are in UTC; a "day" is a UTC day
 - **Rationale**: DefiLlama revenue for UTC day D-1 needs ~4 hours to settle after UTC midnight
 - **Logs**: `logs/launchd.out.log`, `logs/launchd.err.log`, `cron.log`
 - **Manual trigger**: `./run_daily_report.sh YYYY-MM-DD`

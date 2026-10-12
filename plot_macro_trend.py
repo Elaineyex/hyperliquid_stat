@@ -228,14 +228,17 @@ def get_historical_hype_valuation(revenue_7d_avg, valuation_date):
 
     data = fetch_hype_market_chart(days=220)
 
-    price_rows = {
-        pd.to_datetime(item[0], unit='ms', utc=True).normalize(): float(item[1])
-        for item in data.get("prices", [])
-    }
-    market_cap_rows = {
-        pd.to_datetime(item[0], unit='ms', utc=True).normalize(): float(item[1])
-        for item in data.get("market_caps", [])
-    }
+    def by_day(points):
+        # Prefer the exact 00:00 UTC point over the live intraday one CG appends for today
+        rows = {}
+        for t, v in points:
+            ts = pd.to_datetime(t, unit='ms', utc=True)
+            if ts == ts.normalize() or ts.normalize() not in rows:
+                rows[ts.normalize()] = float(v)
+        return rows
+
+    price_rows = by_day(data.get("prices", []))
+    market_cap_rows = by_day(data.get("market_caps", []))
 
     if valuation_day not in price_rows or valuation_day not in market_cap_rows:
         raise ValueError(f"Missing HYPE CoinGecko market data for {valuation_day.strftime('%Y-%m-%d')}")
@@ -249,11 +252,13 @@ def get_historical_hype_valuation(revenue_7d_avg, valuation_date):
 
 
 def get_hype_valuation(revenue_7d_avg, valuation_date, current_hype_price=None):
-    today_utc = datetime.now(timezone.utc).date()
-    if valuation_date.date() >= today_utc:
-        valuation = get_current_hype_valuation(revenue_7d_avg, current_hype_price)
-    else:
+    # CG's 00:00 UTC point on valuation_date is the supply at the close of the previous
+    # UTC day (the row's day). Fall back to the live figure only if that point isn't there.
+    try:
         valuation = get_historical_hype_valuation(revenue_7d_avg, valuation_date)
+    except Exception as e:
+        print(f"CoinGecko 00:00 UTC point unavailable, using live supply: {e}")
+        valuation = get_current_hype_valuation(revenue_7d_avg, current_hype_price)
     if "date" not in valuation:
         valuation["date"] = valuation_date.strftime("%Y-%m-%d")
     return valuation
@@ -262,17 +267,26 @@ def get_hype_valuation(revenue_7d_avg, valuation_date, current_hype_price=None):
 def get_hype_market_chart_history(days=220):
     data = fetch_hype_market_chart(days=days)
 
+    # CoinGecko daily points are stamped 00:00 UTC, i.e. the snapshot at the *end* of the
+    # previous UTC day; shift back one day so each value lines up with the day it closes.
+    prices = {pd.to_datetime(t, unit='ms', utc=True).normalize(): float(v)
+              for t, v in reversed(data.get("prices", []))}
     processed = []
-    for item in data.get("market_caps", []):
-        processed.append({
-            "date": pd.to_datetime(item[0], unit='ms', utc=True).normalize(),
-            "hype_market_cap": float(item[1]),
-        })
+    for t, mcap in reversed(data.get("market_caps", [])):
+        day = pd.to_datetime(t, unit='ms', utc=True).normalize()
+        price = prices.get(day)
+        if price:
+            processed.append({
+                "date": day - pd.Timedelta(days=1),
+                "hype_circulating_supply": float(mcap) / price,
+            })
 
     if not processed:
-        return pd.DataFrame(columns=["hype_market_cap"])
+        return pd.DataFrame(columns=["hype_circulating_supply"])
 
-    return pd.DataFrame(processed).drop_duplicates("date").set_index("date").sort_index()
+    # reversed() + keep="last" keeps the 00:00 point over the live intraday one for today
+    return (pd.DataFrame(processed).drop_duplicates("date", keep="last")
+            .set_index("date").sort_index())
 
 
 def get_hip4_prediction_market_revenue_history():
@@ -476,7 +490,8 @@ def plot_combined_data(hype_df, btc_df, revenue_df, market_cap_df=None, aqa_payo
 
     # Calculate 7d avg for revenue
     df['revenue_7d_avg'] = df['revenue'].rolling(window=7).mean()
-    if 'hype_market_cap' in df.columns:
+    if 'hype_circulating_supply' in df.columns:
+        df['hype_market_cap'] = df['hype_circulating_supply'] * df['HYPE_price']
         df['hype_ps_ratio'] = df['hype_market_cap'] / (df['revenue_7d_avg'] * 365)
         if aqa_payouts:
             aqa_ann = pd.Series([aqa_annualized_as_of(aqa_payouts, d.date()) for d in df.index], index=df.index)
@@ -568,6 +583,20 @@ if __name__ == "__main__":
             sys.exit(1)
 
         revenue_day = revenue_metrics["date"]
+        # A row is one UTC day: prices are that day's 1d-candle close, not a live snapshot at
+        # run time. Drop the still-open candle(s) after revenue_day so the result doesn't
+        # depend on when the cron actually fires (04:00 UTC, or later if the Mac was asleep).
+        day_close_ts = pd.Timestamp(revenue_day, tz="UTC")
+        hype_df = hype_df[hype_df.index <= day_close_ts]
+        btc_df = btc_df[btc_df.index <= day_close_ts]
+        if bnb_df is not None:
+            bnb_df = bnb_df[bnb_df.index <= day_close_ts]
+        for name, d in (("HYPE", hype_df), ("BTC", btc_df)):
+            if d.empty or d.index[-1] != day_close_ts:
+                print(f"Missing {name} UTC daily close for {revenue_day}")
+                sys.exit(1)
+        if bnb_df is not None and (bnb_df.empty or bnb_df.index[-1] != day_close_ts):
+            bnb_df = None
         print(f"\n{'='*50}")
         print(f"  Hyperliquid Daily Summary  {revenue_day}")
         print(f"{'='*50}")
@@ -579,7 +608,7 @@ if __name__ == "__main__":
         hype_1d_chg = (hype_now/hype_prev-1)*100
         hype_7d_chg = (hype_now/hype_7d-1)*100
         hype_30d_chg = (hype_now/hype_30d-1)*100
-        print(f"HYPE Price:    ${hype_now:.2f}  ({hype_1d_chg:+.1f}% 1d | {hype_7d_chg:+.1f}% 7d | {hype_30d_chg:+.1f}% 30d)")
+        print(f"HYPE Price:    ${hype_now:.2f}  ({hype_1d_chg:+.1f}% 1d | {hype_7d_chg:+.1f}% 7d | {hype_30d_chg:+.1f}% 30d)  [UTC close {revenue_day}]")
 
         btc_now  = btc_df['BTC_price'].iloc[-1]
         btc_prev = btc_df['BTC_price'].iloc[-2]
@@ -588,7 +617,7 @@ if __name__ == "__main__":
         btc_1d_chg = (btc_now/btc_prev-1)*100
         btc_7d_chg = (btc_now/btc_7d-1)*100
         btc_30d_chg = (btc_now/btc_30d-1)*100
-        print(f"BTC Price:     ${btc_now:,.0f}  ({btc_1d_chg:+.1f}% 1d | {btc_7d_chg:+.1f}% 7d | {btc_30d_chg:+.1f}% 30d)")
+        print(f"BTC Price:     ${btc_now:,.0f}  ({btc_1d_chg:+.1f}% 1d | {btc_7d_chg:+.1f}% 7d | {btc_30d_chg:+.1f}% 30d)  [UTC close {revenue_day}]")
 
         bnb_now = bnb_df['BNB_price'].iloc[-1] if bnb_df is not None and not bnb_df.empty else None
         if bnb_now is not None:
@@ -606,6 +635,14 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Failed to fetch HYPE valuation metrics from CoinGecko: {e}")
             sys.exit(1)
+        # Market cap at the UTC close of revenue_day: circulating supply x that day's HL close
+        # (CoinGecko's own market_cap is a live/start-of-day snapshot, misaligned with the day).
+        valuation_label = hype_valuation["date"]
+        hype_valuation = build_hype_valuation(
+            rev_7d_avg, hype_valuation["circulating_supply"], hype_valuation["total_supply"],
+            hype_valuation["circulating_supply"] * hype_now,
+        )
+        hype_valuation["date"] = valuation_label
 
         print(f"Daily Revenue: ${latest_rev:,.0f}  ({(latest_rev/prev_rev-1)*100:+.1f}% vs prev day)  [{revenue_day}]")
         print(f"  7d avg:      ${rev_7d_avg:,.0f}")
