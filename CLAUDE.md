@@ -123,8 +123,8 @@ See the `revenue-breakdown` skill (`.claude/skills/revenue-breakdown/SKILL.md`) 
 - **Trigger**: macOS launchd, plist at `~/Library/LaunchAgents/com.hyperliquid.dailyreport.plist`
 - **Time**: 04:00 UTC (= 12:00 local Beijing time on the host Mac). Dashboard timestamps are in UTC; a "day" is a UTC day
 - **Rationale**: DefiLlama revenue for UTC day D-1 needs ~4 hours to settle after UTC midnight
-- **Logs**: `logs/launchd.out.log`, `logs/launchd.err.log`, `cron.log`
-- **Legacy crontab**: `crontab -l` also runs `src/plot_macro_trend.py` at 02:00 local (no date arg) → `cron.log`. Redundant with launchd
+- **Logs**: `logs/launchd.out.log`, `logs/launchd.err.log`
+- **Only launchd runs the pipeline.** A legacy crontab job that ran `plot_macro_trend.py` standalone at 02:00 local was removed on 2026-10-14 (backup: `archive/crontab.bak`). its stale output is `archive/cron.log`
 - **Manual trigger**: `./scripts/run_daily_report.sh YYYY-MM-DD`
 
 To check cron status: `launchctl list | grep hyperliquid`
