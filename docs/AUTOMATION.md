@@ -2,17 +2,18 @@
 
 ## 已设置的自动化任务
 
-每天中午 12:00 自动运行 `plot_macro_trend.py` 并生成 markdown 报告。
+每天中午 12:00 自动运行 `scripts/run_daily_report.sh`（内部调用 `src/plot_macro_trend.py`） 并生成 markdown 报告。
 
 > ⏰ 运行时间从 9:30 调整为 12:00（北京时间）。原因：报告读取 DefiLlama 上「昨天」的协议收入，但 9:30（= UTC 01:30）时昨天的 UTC 日才刚结束约 90 分钟，DefiLlama 尚未结算完成，会读到不完整的偏小数值（例如 06-15 读到 $43,518，结算后实为约 $1.997M）。12:00（= UTC 04:00）有约 4 小时缓冲，确保昨天数据已结算。
 
 ## 文件说明
 
-1. **run_daily_report.sh** - 执行脚本
+1. **scripts/run_daily_report.sh** - 执行脚本
    - 激活虚拟环境
-   - 运行 plot_macro_trend.py
+   - 运行 src/plot_macro_trend.py
    - 解析输出数据
    - 生成 markdown 报告到 `logs/YYYY-MM-DD.md`
+   - 最后运行 src/generate_dashboard.py 生成 `output/dashboard.html`
 
 2. **com.hyperliquid.dailyreport.plist** - launchd 配置文件
    - 位置: `~/Library/LaunchAgents/`
@@ -41,7 +42,7 @@ launchctl load ~/Library/LaunchAgents/com.hyperliquid.dailyreport.plist
 
 # 手动运行测试
 cd /Users/elaineye/agent/hyperliquid_stats
-./run_daily_report.sh
+./scripts/run_daily_report.sh
 
 # 查看日志
 tail -f logs/launchd.out.log
@@ -71,5 +72,7 @@ launchctl load ~/Library/LaunchAgents/com.hyperliquid.dailyreport.plist
 ## 输出文件
 
 - **报告**: `logs/YYYY-MM-DD.md`
-- **图表**: `hyperliquid_6m_macro_trend.png` (每次覆盖)
+- **图表**: `output/hyperliquid_6m_macro_trend.png` (每次覆盖)
+- **Dashboard**: `output/dashboard.html` (每次覆盖)
+- **数据库**: `data/hyperliquid_stats.db`
 - **日志**: `logs/launchd.out.log` 和 `logs/launchd.err.log`

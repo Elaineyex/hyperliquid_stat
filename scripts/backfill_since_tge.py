@@ -9,6 +9,7 @@ TGE: 2024-11-29. We fetch:
 from __future__ import annotations
 
 import os
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,10 +17,12 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-from db import init_db, upsert_daily
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-DB_PATH = SCRIPT_DIR / "hyperliquid_stats.db"
+from db import init_db, upsert_daily  # noqa: E402
+
+DB_PATH = ROOT / "data" / "hyperliquid_stats.db"
 TGE_DATE = datetime(2024, 11, 29, tzinfo=timezone.utc)
 HL_INFO_URL = "https://api.hyperliquid.xyz/info"
 COINGECKO_COIN_URL = "https://api.coingecko.com/api/v3/coins/hyperliquid"

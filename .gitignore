@@ -9,6 +9,9 @@ __pycache__/
 .claude/
 
 # Generated reports, logs, charts, and datasets
+data/
+output/
+archive/
 logs/
 *.log
 cron.log
@@ -20,9 +23,6 @@ cron.log
 *.csv
 *.json
 dashboard.html
-
-# Large external/debug artifacts
-main.js
 
 # Git worktrees (scratch, isolated task workspaces)
 .worktrees/

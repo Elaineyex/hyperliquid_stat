@@ -14,8 +14,10 @@ from db import init_db, upsert_daily
 from aqa import aqa_annualized_as_of, fetch_aqa_payouts
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = Path(SCRIPT_DIR) / "hyperliquid_stats.db"
-CACHE_DIR = Path(SCRIPT_DIR) / ".cache"
+ROOT = Path(SCRIPT_DIR).parent
+DB_PATH = ROOT / "data" / "hyperliquid_stats.db"
+CACHE_DIR = ROOT / ".cache"
+OUTPUT_DIR = ROOT / "output"
 HL_INFO_URL = "https://api.hyperliquid.xyz/info"
 COINGECKO_COIN_URL = "https://api.coingecko.com/api/v3/coins/hyperliquid"
 COINGECKO_MARKET_CHART_URL = "https://api.coingecko.com/api/v3/coins/hyperliquid/market_chart"
@@ -563,7 +565,8 @@ def plot_combined_data(hype_df, btc_df, revenue_df, market_cap_df=None, aqa_payo
 
     plt.tight_layout()
     
-    output_name = os.path.join(SCRIPT_DIR, 'hyperliquid_6m_macro_trend.png')
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_name = str(OUTPUT_DIR / 'hyperliquid_6m_macro_trend.png')
     plt.savefig(output_name, dpi=150)
     print(f"Multi-asset chart saved as: {output_name}")
 

@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-DB_PATH = Path(__file__).resolve().parent / "hyperliquid_stats.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "hyperliquid_stats.db"
 DEFILLAMA_CHART = "https://coins.llama.fi/chart/coingecko:hyperliquid"
 
 

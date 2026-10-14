@@ -419,7 +419,7 @@ def main():
         default=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         help="Daily report date in YYYY-MM-DD format. Revenue day is the prior UTC day.",
     )
-    parser.add_argument("--output-dir", default=str(SCRIPT_DIR / "logs"))
+    parser.add_argument("--output-dir", default=str(SCRIPT_DIR.parent / "logs"))
     args = parser.parse_args()
 
     output_path = build_report(parse_date(args.report_date), Path(args.output_dir))

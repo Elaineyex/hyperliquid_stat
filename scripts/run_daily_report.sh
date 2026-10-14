@@ -5,7 +5,8 @@ set -euo pipefail
 # Daily Hyperliquid Report Runner
 # This script activates the virtual environment, runs the analysis, and generates a markdown report.
 
-cd /Users/elaineye/agent/hyperliquid_stats
+# Run from the repo root (this script lives in scripts/)
+cd "$(dirname "$0")/.."
 source .venv/bin/activate
 
 mkdir -p .cache/matplotlib logs
@@ -16,7 +17,7 @@ TODAY=${1:-$(date -u +%Y-%m-%d)}
 LOG_FILE="logs/${TODAY}.md"
 
 echo "Running daily report for ${TODAY}..."
-if ! OUTPUT=$(python plot_macro_trend.py "$TODAY" 2>&1); then
+if ! OUTPUT=$(python src/plot_macro_trend.py "$TODAY" 2>&1); then
   printf '%s\n' "$OUTPUT" >&2
   exit 1
 fi
@@ -368,9 +369,9 @@ with open(log_file, "w", encoding="utf-8") as handle:
 PY
 
 echo "Report generated: ${LOG_FILE}"
-echo "Chart saved: hyperliquid_6m_macro_trend.png"
+echo "Chart saved: output/hyperliquid_6m_macro_trend.png"
 
-if ! python generate_dashboard.py "$TODAY" 2>&1; then
+if ! python src/generate_dashboard.py "$TODAY" 2>&1; then
   echo "Dashboard generation failed" >&2
   exit 1
 fi

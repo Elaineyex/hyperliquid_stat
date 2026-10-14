@@ -22,10 +22,10 @@ from aqa import fetch_aqa_payouts
 STABLECOIN_CHART_URL = "https://stablecoins.llama.fi/stablecoincharts/Hyperliquid%20L1"
 COINGECKO_COIN_IDS = {"hype": "hyperliquid", "bnb": "binancecoin"}
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 LOGS_DIR = ROOT / "logs"
-DB_PATH = ROOT / "hyperliquid_stats.db"
-OUTPUT_PATH = ROOT / "dashboard.html"
+DB_PATH = ROOT / "data" / "hyperliquid_stats.db"
+OUTPUT_PATH = ROOT / "output" / "dashboard.html"
 
 MD_EXTENSIONS = ["tables", "sane_lists"]
 
